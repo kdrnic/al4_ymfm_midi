@@ -1,4 +1,4 @@
-CFLAGS2=-s -Os -fno-rtti -fno-exceptions -fno-threadsafe-statics
+CFLAGS2=-s -O3 -fno-rtti -fno-exceptions -fno-threadsafe-statics
 
 ifeq ($(origin CC),default)
 	ifeq ($(OS),Windows_NT)
@@ -29,5 +29,8 @@ regular: $(OBJECTS)
 clean:
 	del *.o
 
-%.o: %.cpp $(H_FILES) ../src/ymfm_lib.h
+%.o: %.cpp $(H_FILES)
+	$(CXX) $(INCLUDE_PATHS) $(CFLAGS2) $< -c -o $@
+
+ymfm_lib.o: ymfm_lib.cpp $(H_FILES) ../src/ymfm_lib.h
 	$(CXX) $(INCLUDE_PATHS) $(CFLAGS2) $< -c -o $@

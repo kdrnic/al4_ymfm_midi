@@ -35,10 +35,10 @@ C_FILES=$(wildcard src/*.c)
 C_OBJECTS=$(patsubst src/%,$(OBJDIR)/%,$(patsubst %.c,%.o,$(C_FILES)))
 OBJECTS=$(C_OBJECTS)
 
-HAVE_LIBS=-lymfm -lstdc++
+HAVE_LIBS=-lymfm -lresample -lstdc++
 
 INCLUDE_PATHS=
-LINK_PATHS=-Lymfm
+LINK_PATHS=-Lymfm -Llibresample
 
 #Add Allegro to the libs
 ifeq ($(OS),Windows_NT)

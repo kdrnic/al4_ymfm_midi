@@ -2,3 +2,5 @@
 *.exe
 *.dll
 midi/
+*.a
+src/tags

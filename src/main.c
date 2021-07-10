@@ -199,6 +199,7 @@ int main(int argc, char **argv)
 	*(get_extension(wav_fn) - 1) = 0;
 	strcat(wav_fn, YMFMLIB_RESAMPLE ? "_rsmpl" : "");
 	strcat(wav_fn, YMFMLIB_TIME_REG_WRITES ? "_time" : "");
+	strcat(wav_fn, YMFMLIB_USE_LIBRESAMPLE ? "_libresample" : "");
 	strcat(wav_fn, ".wav");
 	SAMPLE *wav_smpl = create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
 	memcpy(wav_smpl->data, wavbuf, wavlen * sizeof(*wavbuf));
