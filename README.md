@@ -14,15 +14,11 @@ The "wavs" folder contains rendered wavs, to compare with DOSBox captures also t
 
 The original DOS code would use a [midi_player routine](https://github.com/msikma/allegro-4.2.2-xc/blob/ecd87af7f43f9e08f49acc78f4901c39221dbab5/src/midi.c#L897) triggered regularly by a PIT timer interrupt to directly call other routines such as [a key_on handler](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/src/kdr_adlib.c#L525).
 
-Meanwhile, the emulator needs to run as it is triggered by an available audio buffer. Thus I implemented a timing of register writes using a high resolution timer to simulate registers being written to on the fly. [Writes are timed and added to a queue](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/ymfm/ymfm_lib.cpp#L321) and then written at the correct sample timing. This seems to make a difference, even with low buffer size:
+Meanwhile, the emulator needs to run as it is triggered by an available audio buffer. Thus I implemented a timing of register writes using a high resolution timer to simulate registers being written to on the fly. [Writes are timed and added to a queue](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/ymfm/ymfm_lib.cpp#L321) and then written at the correct sample timing. This seems to make a difference, even with low buffer size. Compare with DOSBox though ~~(note, not exactly same scale)~~(I have edited the images to scale) probably timing issues remain:
 
-![Spectrogram without timing](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/wavs/endless.wav.png?raw=true "Without timing")
+![Spectrogram from this program](https://github.com/kdrnic/al4_ymfm_midi/blob/13000c46ead01b6853c1ad6e61989d0174d7da1d/comparison/endless_rsmpl_time_libresample.wav.png?raw=true "This program")
 
-![Spectrogram with timing](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/wavs/endless_time.wav.png?raw=true "With timing")
-
-Compare with DOSBox though (note, not exactly same scale) probably timing issues remain:
-
-![Spectrogram from DOSBox](https://github.com/kdrnic/al4_ymfm_midi/blob/c784c03fee79bcf291c2b275743ef059be8392f5/wavs/endless_dosbox.wav.png?raw=true "From DOSBox")
+![Spectrogram from DOSBox](https://github.com/kdrnic/al4_ymfm_midi/blob/13000c46ead01b6853c1ad6e61989d0174d7da1d/comparison/endless_dosbox.wav.png?raw=true "From DOSBox")
 
 There is also [an issue with sampling rate mentioned in YMFM readme](https://github.com/aaronsgiles/ymfm/blob/ef21f08a16f44b005c9ace5f8f44ae6f95dbf3f0/README.md#clocking) which I don't entirely understand (i.e. I don't understand whether running at the lower rate will be "wrong", like missing register writes etc, or just aliased). Seems the output rate for the OPL3 on a Sound Blaster 16 as calculated by sample_rate() method is 49715 Hz. ~~I have added a "downsampler" (does a straight aliased copy), but this seems to have an almost identical result to running the generator at the lower rate (obviously a proper FFT downsampler would be better).~~ I have added downsampling with [libresample](https://github.com/minorninth/libresample). Check spectrogram comparison:
 
