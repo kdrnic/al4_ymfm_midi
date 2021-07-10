@@ -324,6 +324,7 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 	first_generate = 1;
 	
 	#if YMFMLIB_USE_LIBRESAMPLE
+	//Initialize resamplers (one for each channel)
 	for(int i = 0; i < 2; i++) resampler[i] = resample_open(
 		1,                                   //highQuality
 		double(44100/5) / double(chip_rate), //minFactor
@@ -415,6 +416,7 @@ void ymfm_generate(void *buffer, int num_samples)
 	
 	//Perform resampling
 	#if YMFMLIB_USE_LIBRESAMPLE
+	//Use libresample to downsample each channel separately
 	for(int i = 0; i < (stereo + 1); i++){
 		int in_used = 0;
 		int out_used = resample_process(
@@ -427,27 +429,19 @@ void ymfm_generate(void *buffer, int num_samples)
 						out_f_buffer,                              //outBuffer
 						num_samples                                //outBufferLen
 		);
+		//Pad out_f_buffer
 		for(int j = out_used; j < num_samples; j++){
-			#define MIN(x,y)     (((x) < (y)) ? (x) : (y))
-			#define MAX(x,y)     (((x) > (y)) ? (x) : (y))
-			#define MID(x,y,z)   MAX((x), MIN((y), (z)))
 			out_f_buffer[j] = out_f_buffer[out_used - 1];
-			//out_f_buffer[j] = MID(-1.0, out_f_buffer[out_used - 1] * 2 - out_f_buffer[out_used - 2], 1.0);
-			//out_f_buffer[j] = f_buffer[i][in_used - 1];
-			//puts("foo");
 		}
+		//Convert back to u16
 		for(int j = 0; j < num_samples; j++){
-			#if 1
 			u16buffer[j*(stereo+1)+i] = (out_f_buffer[j] + 0.5) * 32768;
-			#else
-			int pos = (j * num_samples2) / num_samples;
-			u16buffer[j*(stereo+1)+i] = (f_buffer[i][pos] + 0.5) * 32768;
-			#endif
 		}
+		//Remove used samples
 		f_buffer[i].erase(f_buffer[i].begin(), f_buffer[i].begin() + in_used);
-		//printf("%d/%d %d/%d %d/%d\n", output_rate, chip_rate, in_used, num_samples2, out_used, num_samples);
 	}
 	#else
+	//Pointless aliased downsampler
 	for(int i = 0; i < num_samples; i++){
 		int pos = (i * num_samples2) / num_samples;
 		

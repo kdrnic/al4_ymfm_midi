@@ -77,14 +77,15 @@ clean:
 $(OBJDIR):
 	mkdir $(OBJDIR)
 
-$(BINNAME).exe: $(OBJDIR) $(OBJECTS) ymfm/libymfm.a
+$(BINNAME).exe: $(OBJDIR) $(OBJECTS) ymfm/libymfm.a libresample/libresample.a
 	gcc $(LINK_PATHS) $(LINK_FLAGS) $(CFLAGS2) $(OBJECTS) -o $(BINNAME).exe $(HAVE_LIBS) -lalleg -lm
 
 debug: $(BINNAME).exe
 profile: regular
 fast: regular
 
-
-
 ymfm/libymfm.a: ymfm/ymfm_lib.cpp src/ymfm_lib.h ymfm/Makefile
 	cd ymfm && $(MAKE)
+
+libresample/libresample.a:
+	cd libresample && $(MAKE) CFLAGS=-O3
