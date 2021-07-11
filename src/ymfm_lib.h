@@ -3,9 +3,10 @@
 //Magic number from the internets
 #define SB16_OPL_CLOCK_RATE 14318181
 
-#define YMFMLIB_RESAMPLE        1
-#define YMFMLIB_TIME_REG_WRITES 1
-#define YMFMLIB_USE_LIBRESAMPLE 1
+#define YMFM_TIME_ON_FIRST_WRITE 0
+#define YMFMLIB_RESAMPLE         1
+#define YMFMLIB_TIME_REG_WRITES  1
+#define YMFMLIB_USE_LIBRESAMPLE  1
 
 #ifdef __cplusplus
 extern "C" {

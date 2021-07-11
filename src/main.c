@@ -52,14 +52,11 @@ int main(int argc, char **argv)
 	allegro_init();
 	set_color_depth(32);
 	set_gfx_mode(GFX_AUTODETECT_WINDOWED, 640, 400, 0, 0);
+	install_timer();
 	install_keyboard();
 	install_mouse();
-	install_timer();
-	install_sound(DIGI_AUTODETECT, MIDI_NONE, 0);
+	install_sound(DIGI_AUTODETECT, MIDI_AUTODETECT, 0);
 	set_display_switch_mode(SWITCH_BACKGROUND);
-	
-	//Initialize OPL driver
-	install_opl_midi(MIDI_OPL3);
 	
 	//Initialize audio stream
 	int stereo = 1;
@@ -79,6 +76,9 @@ int main(int argc, char **argv)
 	
 	//Initialize YMFM
 	ymfm_init(SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
+	
+	//Initialize OPL driver
+	install_opl_midi(MIDI_OPL3);
 	
 	//File selection dialog if file not passed as argument
 	if(!strlen(midi_fn)){
@@ -191,6 +191,9 @@ int main(int argc, char **argv)
 			//Release buffer
 			if(!wavonly) free_audio_stream_buffer(audio_stream);
 		}
+		
+		//This is highly critical: without it timing gets fucked
+		rest(20);
 	}
 	
 	//Save WAV file

@@ -304,14 +304,16 @@ struct reg_write_t
 	int reg;
 	unsigned char data;
 	LARGE_INTEGER time;
+	long tick;
 };
 
 static unsigned int output_rate, chip_rate;
 static vgm_chip_base *chip;
-static LARGE_INTEGER last_time;
+static LARGE_INTEGER last_time, first_time, pfreq;
+static long last_tick, first_tick;
 static std::vector<reg_write_t> reg_writes;
 static int stereo;
-static int first_generate;
+static int first_generate, first_write;
 static std::vector<float> f_buffer[2];
 static void *resampler[2];
 
@@ -322,6 +324,7 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 	chip = new vgm_chip<ymfm::ymf262>(clock, CHIP_YMF262, "YMF262");
 	chip_rate = chip->sample_rate();
 	first_generate = 1;
+	first_write = 1;
 	
 	#if YMFMLIB_USE_LIBRESAMPLE
 	//Initialize resamplers (one for each channel)
@@ -333,19 +336,45 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 	#endif
 }
 
+//From Allegro's midi.c
+extern volatile long _midi_tick;                   /* counter for killing notes */
+#define MIDI_TIMER_FREQUENCY 40                    /* how often the midi callback gets called maximally / second */
+
 void ymfm_write(int reg, unsigned char data)
 {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
-	reg_write_t rw = {reg, data, now};
+	long now_tick = _midi_tick;
+	
+	#if YMFM_TIME_ON_FIRST_WRITE
+	if(first_write){
+		first_time = now;
+		first_tick = now_tick;
+	}
+	#endif
+	first_write = 0;
+	
+	reg_write_t rw = {reg, data, now, now_tick};
 	reg_writes.push_back(rw);
 }
 
 void ymfm_generate(void *buffer, int num_samples)
 {
+	long now_tick = _midi_tick;
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
+	QueryPerformanceFrequency(&pfreq);
 	auto ellapsed = now.QuadPart - last_time.QuadPart;
+	long ellapsed_tick = now_tick - last_tick;
+	#if !YMFM_TIME_ON_FIRST_WRITE
+	if(first_generate){
+		first_time = now;
+		first_tick = now_tick;
+	}
+	#endif
+	first_generate = 0;
+	
+	printf("%d\n", now_tick);
 	
 	emulated_time output_step = 0x100000000ull / (YMFMLIB_RESAMPLE ? chip_rate : output_rate);
 	static emulated_time output_pos = 0;
@@ -369,7 +398,7 @@ void ymfm_generate(void *buffer, int num_samples)
 	}
 	
 	//If not timing register writes, then write all now
-	while((!YMFMLIB_TIME_REG_WRITES || first_generate) && !reg_writes.empty()){
+	while((!YMFMLIB_TIME_REG_WRITES) && !reg_writes.empty()){
 		reg_write_t front = reg_writes.front();
 		chip->write(front.reg, front.data);
 		reg_writes.erase(reg_writes.begin());
@@ -377,16 +406,28 @@ void ymfm_generate(void *buffer, int num_samples)
 	
 	for(int i = 0; i < num_samples2; i++){
 		//If timing register writes, then write only after/at the adequate sample
-		if((YMFMLIB_TIME_REG_WRITES && !first_generate) && !reg_writes.empty()){
+		while((YMFMLIB_TIME_REG_WRITES) && !reg_writes.empty()){
 			reg_write_t front = reg_writes.front();
 			
+			//Two different timing methods
+			#if 0
 			double sample_time = double(i) / double(num_samples2);
 			double write_time = double(front.time.QuadPart - last_time.QuadPart) / double(ellapsed);
-			
+			#elseif 0
+			double sample_time = double(output_pos) / double(0x100000000ull);
+			double write_time = double(front.time.QuadPart - first_time.QuadPart) / double(pfreq.QuadPart);
+			#elseif 0
+			double sample_time = double(output_pos) / double(0x100000000ull);
+			double write_time = double(front.tick - first_tick) / double(MIDI_TIMER_FREQUENCY);
+			#else
+			double sample_time = double(i) / double(num_samples2);
+			double write_time = double(front.tick - last_tick) / double(ellapsed_tick);
+			#endif
 			if(sample_time >= write_time){
 				chip->write(front.reg, front.data);
 				reg_writes.erase(reg_writes.begin());
 			}
+			else break;
 		}
 		
 		int32_t outputs[2] = {0};
@@ -456,5 +497,5 @@ void ymfm_generate(void *buffer, int num_samples)
 	#endif
 	
 	last_time = now;
-	first_generate = 0;
+	last_tick = now_tick;
 }
