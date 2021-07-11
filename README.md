@@ -26,6 +26,8 @@ Compare with DOSBox though ~~(note, not exactly same scale)~~(I have edited the 
 
 ![Spectrogram from DOSBox](https://github.com/kdrnic/al4_ymfm_midi/blob/13000c46ead01b6853c1ad6e61989d0174d7da1d/comparison/endless_dosbox.wav.png?raw=true "From DOSBox")
 
+(I have now found that adding an Allegro rest(20) call, which similar to sleep(1) but with supposed ms resolution, fixes most timing issues. I now think the cause of all issues may be some absurd issue with timer resolution on Windows).
+
 There is also [an issue with sampling rate mentioned in YMFM readme](https://github.com/aaronsgiles/ymfm/blob/ef21f08a16f44b005c9ace5f8f44ae6f95dbf3f0/README.md#clocking) which I don't entirely understand (i.e. I don't understand whether running at the lower rate will be "wrong", like missing register writes etc, or just aliased). Seems the output rate for the OPL3 on a Sound Blaster 16 as calculated by sample_rate() method is 49715 Hz. ~~I have added a "downsampler" (does a straight aliased copy), but this seems to have an almost identical result to running the generator at the lower rate (obviously a proper FFT downsampler would be better).~~ I have added downsampling with [libresample](https://github.com/minorninth/libresample). Check spectrogram comparison:
 
 ![Spectrogram without resampling](https://github.com/kdrnic/al4_ymfm_midi/blob/63bbf2cdfffbf9438fa499b9c9b90341a3659d25/wavs/nightcall_time.wav.png "Without resampling")
