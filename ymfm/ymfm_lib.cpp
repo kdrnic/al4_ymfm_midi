@@ -318,11 +318,12 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 	
 	#if YMFMLIB_USE_LIBRESAMPLE
 	//Initialize resamplers (one for each channel)
-	for(int i = 0; i < 2; i++) resampler[i] = resample_open(
+	resampler[0] = resample_open(
 		1,                                   //highQuality
 		double(44100/5) / double(chip_rate), //minFactor
 		double(48000) / double(chip_rate)    //maxFactor
 	);
+	resampler[1] = resample_dup(resampler[0]);
 	#endif
 }
 

@@ -816,12 +816,13 @@ static int fm_detect(int input)
    return TRUE;
 }
 
-
-#if 0
+#include <stdio.h>
+#include <stdlib.h>
+#include "kdr_packfile.h"
 /* load_ibk:
  *  Reads in a .IBK patch set file, for use by the Adlib driver.
  */
-int load_ibk(AL_CONST char *filename, int drums)
+int kdr_load_ibk(AL_CONST char *filename, int drums)
 {
    char sig[4];
    FM_INSTRUMENT *inst;
@@ -906,7 +907,6 @@ int load_ibk(AL_CONST char *filename, int drums)
    pack_fclose(f);
    return 0;
 }
-#endif
 
 
 /* fm_init:

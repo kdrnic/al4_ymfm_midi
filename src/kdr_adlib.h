@@ -7,5 +7,6 @@
 extern MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
 
 void kdr_install_opl_midi(int id);
+int kdr_load_ibk(const char *filename, int drums);
 
 #endif

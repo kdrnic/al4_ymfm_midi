@@ -26,6 +26,7 @@ int main(int argc, char **argv)
 	int close = 0;
 	int maxsecs = INT_MAX;
 	int wavonly = 0;
+	char *ibk_fn = 0;
 	
 	//Handle command line arguments
 	for(i = 1; i < argc; i++){
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
 				maxsecs = atoi(ARGVAL);
 			}
 			ARG("-wavonly") wavonly = 1;
+			ARG("-ibk=") ibk_fn = ARGVAL;
 		}
 		else{
 			strcpy(midi_fn, arg);
@@ -99,6 +101,8 @@ int main(int argc, char **argv)
 			goto filesel;
 		}
 	}
+	
+	if(ibk_fn) kdr_load_ibk(ibk_fn, 0);
 	
 	crc32_state_t crc;
 	crc32_init(crc);
@@ -212,16 +216,18 @@ int main(int argc, char **argv)
 	}
 	
 	//Save WAV file
-	char wav_fn[256];
-	strcpy(wav_fn, get_filename(midi_fn));
-	*(get_extension(wav_fn) - 1) = 0;
-	strcat(wav_fn, YMFMLIB_USE_LIBRESAMPLE ? "_libresample" : "");
-	strcat(wav_fn, ".wav");
-	SAMPLE *wav_smpl = create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
-	memcpy(wav_smpl->data, wavbuf, wavlen * sizeof(*wavbuf));
-	save_wav(wav_fn, wav_smpl);
-	destroy_sample(wav_smpl);
-	free(wavbuf);
+	if(wavonly){
+		char wav_fn[256];
+		strcpy(wav_fn, get_filename(midi_fn));
+		*(get_extension(wav_fn) - 1) = 0;
+		strcat(wav_fn, YMFMLIB_USE_LIBRESAMPLE ? "_libresample" : "");
+		strcat(wav_fn, ".wav");
+		SAMPLE *wav_smpl = create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
+		memcpy(wav_smpl->data, wavbuf, wavlen * sizeof(*wavbuf));
+		save_wav(wav_fn, wav_smpl);
+		destroy_sample(wav_smpl);
+		free(wavbuf);
+	}
 	
 	end:
 	allegro_exit();
