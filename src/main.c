@@ -9,6 +9,7 @@
 #include "kdr_adlib.h"
 #include "kdr_aintern.h"
 #include "wav.h"
+#include "crc32.h"
 
 int main(int argc, char **argv)
 {
@@ -98,6 +99,16 @@ int main(int argc, char **argv)
 			goto filesel;
 		}
 	}
+	
+	crc32_state_t crc;
+	crc32_init(crc);
+	crc32_buffer((char *) &mid->divisions, sizeof(mid->divisions), crc);
+	for(int i = 0; i < KDR_MIDI_TRACKS; i++){
+		if(mid->track[i].data && mid->track[i].len){
+			crc32_buffer((char *) mid->track[i].data, mid->track[i].len, crc);
+		}
+	}
+	printf("%x %x\n", crc[0], crc[1]);
 	
 	clear(screen);
 	

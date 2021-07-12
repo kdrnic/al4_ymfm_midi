@@ -290,9 +290,6 @@ void operator delete(void* p, unsigned long i)
 }
 #endif
 
-//Provide QueryPerformanceCounter
-#include <windows.h>
-
 #include "../src/ymfm_lib.h"
 
 #if YMFMLIB_USE_LIBRESAMPLE

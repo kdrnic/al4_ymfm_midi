@@ -22,6 +22,8 @@
 
 #include <limits.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 //#include "allegro.h"
 #define KDR_INTERNAL
@@ -196,7 +198,7 @@ static void remove_int(void (*proc)(void))
 void kdr_update_midi(int samples, int sampl_rate)
 {
 	kdr_int_time += ((KDR_LARGE_INT) samples * TIMERS_PER_SECOND) / (KDR_LARGE_INT) sampl_rate;
-	if(kdr_int_time - kdr_int_last > kdr_int_speed){
+	if(kdr_int_speed && kdr_int_time - kdr_int_last > kdr_int_speed){
 		midi_player();
 		kdr_int_last = kdr_int_time;
 	}
@@ -220,6 +222,83 @@ void lock_midi(MIDI *midi)
    }
 }
 
+// PACKFILE emulation ----------------------------------------------------------
+#ifndef KDR_USE_ALLEGRO_PACKFILE
+	struct PACKFILE
+	{
+		FILE *f;
+		long sz;
+	};
+	typedef struct PACKFILE PACKFILE;
+	static PACKFILE *pack_fopen(const char *fn, const char *mode)
+	{
+		PACKFILE *f = malloc(sizeof(PACKFILE));
+		f->f = fopen(fn, "rb");
+		if(!f->f){
+			free(f);
+			return 0;
+		}
+		fseek(f->f, 0L, SEEK_END);
+		f->sz = ftell(f->f);
+		rewind(f->f);
+		return f;
+	}
+	static void pack_fclose(PACKFILE *f)
+	{
+		fclose(f->f);
+		free(f);
+	}
+	static long pack_fread(void *p, long n,PACKFILE *f)
+	{
+		return fread(p, 1, n, f->f);
+	}
+	static long pack_mgetl(PACKFILE *f)
+	{
+		int b1, b2, b3, b4;
+		ASSERT(f);
+		if ((b1 = fgetc(f->f)) != EOF)
+			if ((b2 = fgetc(f->f)) != EOF)
+				if ((b3 = fgetc(f->f)) != EOF)
+					if ((b4 = fgetc(f->f)) != EOF)
+						return (((long)b1 << 24) | ((long)b2 << 16) | ((long)b3 << 8) | (long)b4);
+		return EOF;
+	}
+	/* Finds out if you have reached the end of the file. It does not wait for you to attempt
+	to read beyond the end of the file, contrary to the ISO C feof() function. The only way to
+	know whether you have read beyond the end of the file is to check the return value of the
+	read operation you use (and be wary of pack_*getl() as EOF is also a valid return value 
+	with these functions). 
+	*/
+	static int pack_feof(PACKFILE *fp)
+	{
+		long old = ftell(fp->f);
+		return old >= fp->sz;
+	}
+	static void pack_fseek(PACKFILE *f, long offs)
+	{
+		fseek(f->f, offs, SEEK_CUR);
+	}
+	static long pack_igetl(PACKFILE *f)
+	{
+		int b1, b2, b3, b4;
+		ASSERT(f);
+		if ((b1 = fgetc(f->f)) != EOF)
+			if ((b2 = fgetc(f->f)) != EOF)
+				if ((b3 = fgetc(f->f)) != EOF)
+					if ((b4 = fgetc(f->f)) != EOF)
+						return (((long)b4 << 24) | ((long)b3 << 16) | ((long)b2 << 8) | (long)b1);
+		return EOF;
+	}
+	static int pack_mgetw(PACKFILE *f)
+	{
+		int b1, b2;
+		ASSERT(f);
+		if ((b1 = fgetc(f->f)) != EOF)
+			if ((b2 = fgetc(f->f)) != EOF)
+				return ((b1 << 8) | b2);
+		return EOF;
+	}
+#endif
 
 
 /* load_midi:
@@ -231,7 +310,9 @@ MIDI *load_midi(AL_CONST char *filename)
    int c;
    char buf[4];
    long data;
+   
    PACKFILE *fp;
+   
    MIDI *midi;
    int num_tracks;
    ASSERT(filename);
@@ -241,6 +322,7 @@ MIDI *load_midi(AL_CONST char *filename)
       return NULL;
 
    midi = _AL_MALLOC(sizeof(MIDI));              /* get some memory */
+   memset(midi, 0, sizeof(MIDI));
    if (!midi) {
       pack_fclose(fp);
       return NULL;
@@ -296,6 +378,7 @@ MIDI *load_midi(AL_CONST char *filename)
       midi->track[c].len = data;
 
       midi->track[c].data = _AL_MALLOC_ATOMIC(data); /* allocate memory */
+	  memset(midi->track[c].data, 0, data);
       if (!midi->track[c].data)
 	 goto err;
 					     /* finally, read track data */

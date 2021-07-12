@@ -71,7 +71,13 @@
 	
 	#define ABS(x)       (((x) >= 0) ? (x) : (-(x)))
 	
-	#define uconvert_ascii(s, buf)      uconvert(s, U_ASCII, buf, U_CURRENT, sizeof(buf))
+	#define F_READ          "r"
+	#define TIMERS_PER_SECOND     1193181L
+	#define BPS_TO_TIMER(x)       (TIMERS_PER_SECOND / (long)(x))
+	#define _AL_MALLOC(SIZE)         (malloc(SIZE))
+	#define _AL_MALLOC_ATOMIC(SIZE)  (malloc(SIZE))
+	#define _AL_FREE(PTR)            (free(PTR))
+	#define _AL_REALLOC(PTR, SIZE)   (realloc(PTR, SIZE))
 	
 	#endif
 
@@ -220,48 +226,6 @@ KDR_AL_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *
 KDR_AL_FUNCPTR(void,      kdr_midi_recorder, (unsigned char data));
 KDR_AL_FUNC(void,         kdr_lock_midi, (struct KDR_MIDI *midi));
 void kdr_update_midi(int samples, int sampl_rate);
-
-#ifdef KDR_INTERNAL
-	// EXTRA Allegro STUFF ---------------------------------------------------------
-	#if 1
-
-	#include <stdlib.h>
-	#define F_READ          "r"
-	#define TIMERS_PER_SECOND     1193181L
-	#define BPS_TO_TIMER(x)       (TIMERS_PER_SECOND / (long)(x))
-	#define _AL_MALLOC(SIZE)         (malloc(SIZE))
-	#define _AL_MALLOC_ATOMIC(SIZE)  (malloc(SIZE))
-	#define _AL_FREE(PTR)            (free(PTR))
-	#define _AL_REALLOC(PTR, SIZE)   (realloc(PTR, SIZE))
-
-	struct PACKFILE;
-	typedef struct PACKFILE PACKFILE;
-
-	#endif
-
-
-	// EXTERNAL Allegro SYMBOLS, TO BE REMOVED -------------------------------------
-	#if 1
-	#undef _AL_DLL 
-	#define _AL_DLL __declspec(dllimport)
-
-	char *ustrzcpy(char *dest, int size, AL_CONST char *src);
-	int uszprintf(char *buf, int size, AL_CONST char *format, ...);
-	#define ALLEGRO_ERROR_SIZE 256
-	extern char allegro_error[ALLEGRO_ERROR_SIZE];
-	int pack_fclose(PACKFILE *f);
-	int pack_feof(PACKFILE *f);
-	PACKFILE *pack_fopen(AL_CONST char *filename, AL_CONST char *mode);
-	long pack_fread(void *p, long n, PACKFILE *f);
-	int pack_fseek(PACKFILE *f, int offset);
-	long pack_igetl(PACKFILE *f);
-	long pack_mgetl(PACKFILE *f);
-	int pack_mgetw(PACKFILE *f);
-	char *uconvert(AL_CONST char *s, int type, char *buf, int newtype, int size);
-	long ustrtol(AL_CONST char *s, char **endp, int base);
-
-	#endif
-#endif
 
 #ifdef __cplusplus
    }
