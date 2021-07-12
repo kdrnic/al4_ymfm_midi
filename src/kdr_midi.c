@@ -127,7 +127,7 @@ static long midi_pos_counter;                   /* delta for midi_pos */
 
 volatile long _midi_tick = 0;                   /* counter for killing notes */
 
-//static void midi_player(void);                  /* core MIDI player routine */
+static void midi_player(void);                  /* core MIDI player routine */
 static void prepare_to_play(MIDI *midi);
 static void midi_lock_mem(void);
 
@@ -166,7 +166,41 @@ void (*midi_msg_callback)(int msg, int byte1, int byte2) = NULL;
 void (*midi_meta_callback)(int type, AL_CONST unsigned char *data, int length) = NULL;
 void (*midi_sysex_callback)(AL_CONST unsigned char *data, int length) = NULL;
 
-
+/*
+KDRNIC's solution:
+	Simulate PIT interruption based timers through a function called with the number of new samples added
+*/
+#define KDR_LARGE_INT long long int
+static KDR_LARGE_INT kdr_int_time = 0;
+static KDR_LARGE_INT kdr_int_speed = 0;
+static KDR_LARGE_INT kdr_int_last = 0;
+#define MSEC_TO_TIMER(x)      ((long)(x) * (TIMERS_PER_SECOND / 1000))
+static void install_int(void (*proc)(void), long speed)
+{
+	if(proc == midi_player){
+		kdr_int_speed = MSEC_TO_TIMER(speed);
+	}
+}
+static void install_int_ex(void (*proc)(void), long speed)
+{
+	if(proc == midi_player){
+		kdr_int_speed = speed;
+	}
+}
+static void remove_int(void (*proc)(void))
+{
+	if(proc == midi_player){
+		kdr_int_speed = 0;
+	}
+}
+void kdr_update_midi(int samples, int sampl_rate)
+{
+	kdr_int_time += ((KDR_LARGE_INT) samples * TIMERS_PER_SECOND) / (KDR_LARGE_INT) sampl_rate;
+	if(kdr_int_time - kdr_int_last > kdr_int_speed){
+		midi_player();
+		kdr_int_last = kdr_int_time;
+	}
+}
 
 /* lock_midi:
  *  Locks a MIDI file into physical memory. Pretty important, since they
@@ -936,7 +970,7 @@ END_OF_STATIC_FUNCTION(process_midi_event);
 /* midi_player:
  *  The core MIDI player: to be used as a timer callback.
  */
-void midi_player(void)
+static void midi_player(void)
 {
    int c;
    long l;
@@ -1640,5 +1674,3 @@ static void midi_lock_mem(void)
    LOCK_FUNCTION(midi_resume);
    LOCK_FUNCTION(midi_seek);
 }
-
-

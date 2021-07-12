@@ -219,7 +219,7 @@ KDR_AL_FUNCPTR(void,      kdr_midi_meta_callback, (int type, KDR_AL_CONST unsign
 KDR_AL_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *data, int length));
 KDR_AL_FUNCPTR(void,      kdr_midi_recorder, (unsigned char data));
 KDR_AL_FUNC(void,         kdr_lock_midi, (struct KDR_MIDI *midi));
-void kdr_midi_player(void);
+void kdr_update_midi(int samples, int sampl_rate);
 
 #ifdef KDR_INTERNAL
 	// EXTRA Allegro STUFF ---------------------------------------------------------
@@ -240,7 +240,7 @@ void kdr_midi_player(void);
 	#endif
 
 
-	// MORE EXTERNAL Allegro SYMBOLS -----------------------------------------------
+	// EXTERNAL Allegro SYMBOLS, TO BE REMOVED -------------------------------------
 	#if 1
 	#undef _AL_DLL 
 	#define _AL_DLL __declspec(dllimport)
@@ -249,12 +249,6 @@ void kdr_midi_player(void);
 	int uszprintf(char *buf, int size, AL_CONST char *format, ...);
 	#define ALLEGRO_ERROR_SIZE 256
 	extern char allegro_error[ALLEGRO_ERROR_SIZE];
-	//int install_int(void (*proc)(void), long speed);
-	//int install_int_ex(void (*proc)(void), long speed);
-	//void remove_int(void (*proc)(void));
-	#define install_int(foo,bar)
-	#define install_int_ex(foo,bar)
-	#define remove_int(foo)
 	int pack_fclose(PACKFILE *f);
 	int pack_feof(PACKFILE *f);
 	PACKFILE *pack_fopen(AL_CONST char *filename, AL_CONST char *mode);

@@ -176,7 +176,13 @@ int main(int argc, char **argv)
 		//Use get_audio_stream_buffer to try and get a new buffer to fill with
 		//n=audio_buf_siz samples
 		if(wavonly || (audio_buf = (uint16_t *) get_audio_stream_buffer(audio_stream))){
-			ymfm_generate(audio_buf, audio_buf_siz);
+			//Cut update into small updates to achieve good MIDI resolution
+			int audio_buf_siz2 = audio_buf_siz;
+			while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
+			for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
+				ymfm_generate(audio_buf2, audio_buf_siz2);
+				kdr_update_midi(audio_buf_siz2, sampling_rate);
+			}
 			
 			//Also add to WAV file capture:
 			int add_siz = audio_buf_siz * (1 + stereo);
@@ -191,20 +197,13 @@ int main(int argc, char **argv)
 			
 			//Release buffer
 			if(!wavonly) free_audio_stream_buffer(audio_stream);
-			
-			kdr_midi_player();
 		}
-		
-		//This is highly critical: without it timing gets fucked
-		//rest(20);
 	}
 	
 	//Save WAV file
 	char wav_fn[256];
 	strcpy(wav_fn, get_filename(midi_fn));
 	*(get_extension(wav_fn) - 1) = 0;
-	strcat(wav_fn, YMFMLIB_RESAMPLE ? "_rsmpl" : "");
-	strcat(wav_fn, YMFMLIB_TIME_REG_WRITES ? "_time" : "");
 	strcat(wav_fn, YMFMLIB_USE_LIBRESAMPLE ? "_libresample" : "");
 	strcat(wav_fn, ".wav");
 	SAMPLE *wav_smpl = create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
