@@ -337,14 +337,14 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 }
 
 //From Allegro's midi.c
-extern volatile long _midi_tick;                   /* counter for killing notes */
+extern volatile long kdr_midi_tick;                   /* counter for killing notes */
 #define MIDI_TIMER_FREQUENCY 40                    /* how often the midi callback gets called maximally / second */
 
 void ymfm_write(int reg, unsigned char data)
 {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
-	long now_tick = _midi_tick;
+	long now_tick = kdr_midi_tick;
 	
 	#if YMFM_TIME_ON_FIRST_WRITE
 	if(first_write){
@@ -360,7 +360,7 @@ void ymfm_write(int reg, unsigned char data)
 
 void ymfm_generate(void *buffer, int num_samples)
 {
-	long now_tick = _midi_tick;
+	long now_tick = kdr_midi_tick;
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	QueryPerformanceFrequency(&pfreq);

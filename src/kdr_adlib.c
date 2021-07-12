@@ -20,8 +20,10 @@
 
 #include <string.h>
 
-#include <allegro.h>
-#include <allegro/internal/aintern.h>
+//#include <allegro.h>
+
+#define KDR_INTERNAL
+#include "kdr_aintern.h"
 //#include "allegro/platform/aintdos.h"
 
 //#ifndef ALLEGRO_DOS
@@ -30,6 +32,10 @@
 
 #include "ymfm_lib.h"
 #include "kdr_adlib.h"
+
+#define MIDI_OPL2   KDR_MIDI_OPL2   //         AL_ID('O','P','L','2')
+#define MIDI_2XOPL2 KDR_MIDI_2XOPL2 //         AL_ID('O','P','L','X')
+#define MIDI_OPL3   KDR_MIDI_OPL3   //         AL_ID('O','P','L','3')
 
 /* external interface to the Adlib driver */
 static int fm_detect(int input);
@@ -72,7 +78,7 @@ static char adlib_desc[256] = EMPTY_STRING;
 */
 
 
-MIDI_DRIVER midi_opl2 =
+MIDI_DRIVER kdr_midi_opl2 =
 {
    .id               = MIDI_OPL2,
    .name             = EMPTY_STRING, 
@@ -102,7 +108,7 @@ MIDI_DRIVER midi_opl2 =
 
 
 
-MIDI_DRIVER midi_2xopl2 =
+MIDI_DRIVER kdr_midi_2xopl2 =
 {
    .id               = MIDI_2XOPL2,
    .name             = EMPTY_STRING, 
@@ -132,7 +138,7 @@ MIDI_DRIVER midi_2xopl2 =
 
 
 
-MIDI_DRIVER midi_opl3 =
+MIDI_DRIVER kdr_midi_opl3 =
 {
    .id               = MIDI_OPL3,
    .name             = EMPTY_STRING, 
@@ -172,10 +178,6 @@ MIDI_DRIVER midi_opl3 =
 /* include the GM patch set (static data) */
 #include "fm_instr.h"
 #include "fm_drum.h"
-
-
-/* where to find the card */
-int _fm_port = -1;
 
 
 /* is the OPL in percussion mode? */
@@ -740,6 +742,7 @@ static int fm_is_there(void)
 //SHOULDN'T NORMALLY BE CALLED
 static int fm_detect(int input)
 {
+	#if 0
    static int ports[] = { 0x210, 0x220, 0x230, 0x240, 0x250, 0x260, 0x388, 0 };
    char tmp1[64], tmp2[64];
    int opl_type;
@@ -749,7 +752,7 @@ static int fm_detect(int input)
    if (input)
       return FALSE;
 
-   _fm_port = get_config_hex(uconvert_ascii("sound", tmp1), uconvert_ascii("fm_port", tmp2), -1);
+   //_fm_port = get_config_hex(uconvert_ascii("sound", tmp1), uconvert_ascii("fm_port", tmp2), -1);
 
    if (_fm_port < 0) {
       if (midi_card == MIDI_OPL2) {
@@ -766,7 +769,7 @@ static int fm_detect(int input)
    }
 
    if (!fm_is_there()) {
-      ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, get_config_text("OPL synth not found"));
+      ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("OPL synth not found"));
       return FALSE;
    }
 
@@ -787,13 +790,13 @@ static int fm_detect(int input)
 
    if (midi_card == MIDI_OPL3) {
       if (opl_type != MIDI_OPL3) {
-	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, get_config_text("OPL3 synth not found"));
+	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("OPL3 synth not found"));
 	 return FALSE;
       }
    }
    else if (midi_card == MIDI_2XOPL2) {
       if (opl_type != MIDI_2XOPL2) {
-	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, get_config_text("Second OPL2 synth not found"));
+	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("Second OPL2 synth not found"));
 	 return FALSE;
       }
    }
@@ -801,19 +804,20 @@ static int fm_detect(int input)
       midi_card = opl_type;
 
    if (midi_card == MIDI_OPL2)
-      s = get_config_text("OPL2 synth");
+      s = ("OPL2 synth");
    else if (midi_card == MIDI_2XOPL2)
-      s = get_config_text("Dual OPL2 synths");
+      s = ("Dual OPL2 synths");
    else
-      s = get_config_text("OPL3 synth");
+      s = ("OPL3 synth");
 
-   uszprintf(adlib_desc, sizeof(adlib_desc), get_config_text("%s on port %X"), s, _fm_port);
+   uszprintf(adlib_desc, sizeof(adlib_desc), ("%s on port %X"), s, _fm_port);
    midi_driver->desc = adlib_desc;
+   #endif
    return TRUE;
 }
 
 
-
+#if 0
 /* load_ibk:
  *  Reads in a .IBK patch set file, for use by the Adlib driver.
  */
@@ -902,7 +906,7 @@ int load_ibk(AL_CONST char *filename, int drums)
    pack_fclose(f);
    return 0;
 }
-
+#endif
 
 
 /* fm_init:
@@ -916,6 +920,7 @@ static int fm_init(int input, int voices)
 
    fm_reset(1);
 
+   #if 0
    for (i=0; i<2; i++) {
       s = get_config_string(uconvert_ascii("sound", tmp1), uconvert_ascii(((i == 0) ? "ibk_file" : "ibk_drum_file"), tmp2), NULL);
       if ((s) && (ugetc(s))) {
@@ -925,6 +930,7 @@ static int fm_init(int input, int voices)
 	 }
       }
    }
+   #endif
 
    LOCK_VARIABLE(midi_opl2);
    LOCK_VARIABLE(midi_2xopl2);
@@ -974,3 +980,23 @@ static void fm_exit(int input)
    fm_reset(0);
 }
 
+void kdr_install_opl_midi(int id)
+{
+	switch(id){
+		case KDR_MIDI_OPL2:
+			kdr_midi_driver = &kdr_midi_opl2;
+			kdr_midi_card = id;
+			break;
+		case KDR_MIDI_OPL3:
+			kdr_midi_driver = &kdr_midi_opl3;
+			kdr_midi_card = id;
+			break;
+		case KDR_MIDI_2XOPL2:
+			kdr_midi_driver = &kdr_midi_2xopl2;
+			kdr_midi_card = id;
+			break;
+		default:
+			return;
+	}
+	midi_driver->init(0, midi_driver->voices);
+}

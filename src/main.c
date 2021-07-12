@@ -7,6 +7,7 @@
 
 #include "ymfm_lib.h"
 #include "kdr_adlib.h"
+#include "kdr_aintern.h"
 #include "wav.h"
 
 int main(int argc, char **argv)
@@ -14,7 +15,7 @@ int main(int argc, char **argv)
 	//Some player state variables
 	int i;
 	char midi_fn[256] = "";
-	MIDI *mid = 0;
+	KDR_MIDI *mid = 0;
 	int nbeats, nsecs;
 	int paused = 0;
 	int seekam = 1;
@@ -78,7 +79,7 @@ int main(int argc, char **argv)
 	ymfm_init(SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
 	
 	//Initialize OPL driver
-	install_opl_midi(MIDI_OPL3);
+	kdr_install_opl_midi(KDR_MIDI_OPL3);
 	
 	//File selection dialog if file not passed as argument
 	if(!strlen(midi_fn)){
@@ -91,7 +92,7 @@ int main(int argc, char **argv)
 		}
 	}
 	//Load MIDI file
-	mid = load_midi(midi_fn);
+	mid = kdr_load_midi(midi_fn);
 	if(!mid){
 		if(alert("Couldn't load MIDI file.", "Maybe it is broken.", "Let's try again.", "Yes, please", "I am an idiot", 'y', 'n')){
 			goto filesel;
@@ -101,32 +102,32 @@ int main(int argc, char **argv)
 	clear(screen);
 	
 	//Calculate MIDI duration
-	get_midi_length(mid);
-	nbeats = -midi_pos;
-	nsecs = midi_time;
+	kdr_get_midi_length(mid);
+	nbeats = -kdr_midi_pos;
+	nsecs = kdr_midi_time;
 	
 	//Initialize some stuff for WAV file capture
 	int wavbuf_siz = (nsecs + 1) * sampling_rate * (1 + stereo), wavlen = 0;
 	uint16_t *wavbuf = malloc(sizeof(*wavbuf) * wavbuf_siz);
 	
 	//Start playing
-	play_midi(mid, 1);
+	kdr_play_midi(mid, 1);
 	
 	if(firstseek){
-		midi_seek(firstseek);
+		kdr_midi_seek(firstseek);
 	}
 	
 	rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
 	
 	//Main loop
-	while(!key[KEY_ESC] && !(close && (midi_time >= nsecs || midi_time >= maxsecs))){
+	while(!key[KEY_ESC] && !(close && (kdr_midi_time >= nsecs || kdr_midi_time >= maxsecs))){
 		//START OF PLAYER UI CODE -----------------------------------------
 		#if 1
 		int cbeats, csecs, bar;
 		int seekto, seek = 0;
 		int multi = 1;
-		cbeats = midi_pos;
-		csecs = midi_time;
+		cbeats = kdr_midi_pos;
+		csecs = kdr_midi_time;
 		
 		if(key_shifts & KB_SHIFT_FLAG) multi = 4;
 		
@@ -155,17 +156,17 @@ int main(int argc, char **argv)
 			}
 			if(seek){
 				redrawbar = 1;
-				midi_seek(seekto);
+				kdr_midi_seek(seekto);
 			}
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 1;
-				midi_pause();
+				kdr_midi_pause();
 			}
 		}
 		else{
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 0;
-				midi_resume();
+				kdr_midi_resume();
 			}
 		}
 		oldsp = key[KEY_SPACE];
@@ -190,10 +191,12 @@ int main(int argc, char **argv)
 			
 			//Release buffer
 			if(!wavonly) free_audio_stream_buffer(audio_stream);
+			
+			kdr_midi_player();
 		}
 		
 		//This is highly critical: without it timing gets fucked
-		rest(20);
+		//rest(20);
 	}
 	
 	//Save WAV file
