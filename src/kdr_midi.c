@@ -42,8 +42,6 @@ int  _dummy_load_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CO
 void _dummy_adjust_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums) { }
 void _dummy_key_on(struct KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan) { }
 
-int midi_card = MIDI_NONE;
-
 static MIDI_DRIVER _midi_none =
 {
    MIDI_NONE,
@@ -1689,6 +1687,6 @@ void kdr_install_driver(KDR_MIDI_CTX *ctx, KDR_MIDI_DRIVER *drv)
 	memset(ctx, 0, sizeof(*ctx));
 	
 	ctx->midi_driver = drv;
-	midi_card = drv->id;
+	ctx->midi_card = drv->id;
 	ctx->midi_driver->init(ctx, 0, ctx->midi_driver->voices);
 }

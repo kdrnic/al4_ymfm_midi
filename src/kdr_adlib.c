@@ -282,7 +282,7 @@ static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
    for (i=0xF5; i>0; i--)
       fm_write(i, 0);
 
-   if (midi_card == MIDI_OPL3) {          /* if we have an OPL3... */
+   if (ctx->midi_card == MIDI_OPL3) {          /* if we have an OPL3... */
       fm_delay_1 = 1;
       fm_delay_2 = 2;
 
@@ -301,7 +301,7 @@ static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
       fm_delay_1 = 6;
       fm_delay_2 = 35;
 
-      if (midi_card == MIDI_2XOPL2) {     /* if we have a second OPL2... */
+      if (ctx->midi_card == MIDI_2XOPL2) {     /* if we have a second OPL2... */
 	 for (i=0x1F5; i>0x100; i--)
 	    fm_write(i, 0);
 
@@ -357,7 +357,7 @@ static void fm_set_drum_mode(struct KDR_MIDI_CTX *ctx, int usedrums)
    midi_driver->xmax = usedrums ? 8 : -1;
 
    for (i=6; i<9; i++)
-      if (midi_card == MIDI_OPL3)
+      if (ctx->midi_card == MIDI_OPL3)
 	 fm_write(0xC0+VOICE_OFFSET(i), 0x30);
       else
 	 fm_write(0xC0+VOICE_OFFSET(i), 0);
@@ -375,7 +375,7 @@ END_OF_STATIC_FUNCTION(fm_set_drum_mode);
  *  actually set the volume: it just stores volume data in the fm_level
  *  arrays for fm_set_volume() to use.
  */
-static INLINE void fm_set_voice(int voice, FM_INSTRUMENT *inst)
+static INLINE void fm_set_voice(KDR_MIDI_CTX *ctx, int voice, FM_INSTRUMENT *inst)
 {
    /* store some info */
    fm_keyscale[voice] = inst->level2 & 0xC0;
@@ -397,7 +397,7 @@ static INLINE void fm_set_voice(int voice, FM_INSTRUMENT *inst)
       fm_write(0x40+fm_offset[voice], inst->level1);
 
    /* on OPL3, 0xC0 contains pan info, so don't set it until fm_key_on() */
-   if (midi_card != MIDI_OPL3)
+   if (ctx->midi_card != MIDI_OPL3)
       fm_write(0xC0+VOICE_OFFSET(voice), inst->feedback);
 }
 
@@ -550,7 +550,7 @@ static void fm_key_on(KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, 
       fm_trigger_drum(ctx, inst, vol);
    }
    else {                                          /* regular instrument */
-      if (midi_card == MIDI_2XOPL2) {
+      if (ctx->midi_card == MIDI_2XOPL2) {
 	 /* the SB Pro-1 has fixed pan positions per voice... */
 	 if (pan < 64)
 	    voice = _midi_allocate_voice(ctx, 0, 5);
@@ -571,12 +571,12 @@ static void fm_key_on(KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, 
 
       /* make sure the voice is set up with the right sound */
       if (inst != fm_patch[voice]) {
-	 fm_set_voice(voice, fm_instrument+inst);
+	 fm_set_voice(ctx, voice, fm_instrument+inst);
 	 fm_patch[voice] = inst;
       }
 
       /* set pan position */
-      if (midi_card == MIDI_OPL3) {
+      if (ctx->midi_card == MIDI_OPL3) {
 	 if (pan < 48)
 	    pan = 0x10;
 	 else if (pan >= 80)

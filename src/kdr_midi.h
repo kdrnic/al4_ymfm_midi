@@ -179,8 +179,6 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define MIDI_NONE             0
 	#define MIDI_DIGMID           AL_ID('D','I','G','I')
 	
-//	#define midi_driver             kdr_midi_driver
-	#define midi_card               kdr_midi_card
 	#define midi_pos                kdr_midi_pos
 	#define midi_time               kdr_midi_time
 	#define midi_loop_start         kdr_midi_loop_start
@@ -217,8 +215,6 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define _dummy_noop3            kdr_dummy_noop3
 	#define midi_player             kdr_midi_player
 	
-//	AL_VAR(MIDI_DRIVER *, midi_driver);
-	AL_VAR(int, midi_card);
 	AL_FUNC(int, _midi_allocate_voice, (KDR_MIDI_CTX *ctx, int min, int max));
 	AL_VAR(volatile long, _midi_tick);
 	
