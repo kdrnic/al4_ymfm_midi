@@ -27,7 +27,7 @@
 
 //#include "allegro.h"
 #define KDR_INTERNAL
-#include "kdr_aintern.h"
+#include "kdr_midi.h"
 
 int  _dummy_detect(int input) { return TRUE; }
 int  _dummy_init(int input, int voices) { /*digi_none.desc = _midi_none.desc = get_config_text("The sound of silence");*/ return 0; }

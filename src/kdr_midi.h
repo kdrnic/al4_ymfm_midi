@@ -1,5 +1,5 @@
-#ifndef KDR_AINTERN_H
-#define KDR_AINTERN_H
+#ifndef KDR_MIDI_H
+#define KDR_MIDI_H
 
 /*         ______   ___    ___
  *        /\  _  \ /\_ \  /\_ \
@@ -30,6 +30,81 @@
 #define KDR_AL_ID(a,b,c,d)     (((a)<<24) | ((b)<<16) | ((c)<<8) | (d))
 #define KDR_AL_METHOD(type, name, args)    type (__cdecl *name) args
 #define KDR_AL_FUNCPTR(type, name, args)            extern type (*name) args
+
+#define KDR_AL_PROP_FUNCPTR(type, name, args)            type (*name) args
+#define KDR_AL_PROP_VAR(type, name)              type name
+
+#define KDR_MIDI_TRACKS           32       /* able to handle this many */
+
+typedef struct KDR_MIDI                    /* a midi file */
+{
+   int divisions;                      /* number of ticks per quarter note */
+   struct {
+      unsigned char *data;             /* MIDI message stream */
+      int len;                         /* length of the track data */
+   } track[KDR_MIDI_TRACKS];
+} KDR_MIDI;
+
+typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
+{
+	int  id;                            /* driver ID code */
+	KDR_AL_CONST char *name;                /* driver name */
+	KDR_AL_CONST char *desc;                /* description string */
+	KDR_AL_CONST char *ascii_name;          /* ASCII format name string */
+	int  voices;                        /* available voices */
+	int  basevoice;                     /* voice number offset */
+	int  max_voices;                    /* maximum voices we can support */
+	int  def_voices;                    /* default number of voices to use */
+	int  xmin, xmax;                    /* reserved voice range */
+	
+	/* setup routines */
+	KDR_AL_METHOD(int,  detect, (int input));
+	KDR_AL_METHOD(int,  init, (int input, int voices));
+	KDR_AL_METHOD(void, exit, (int input));
+	KDR_AL_METHOD(int,  set_mixer_volume, (int volume));
+	KDR_AL_METHOD(int,  get_mixer_volume, (void));
+	
+	/* raw MIDI output to MPU-401, etc. */
+	KDR_AL_METHOD(void, raw_midi, (int data));
+	
+	/* dynamic patch loading routines */
+	KDR_AL_METHOD(int,  load_patches, (KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
+	KDR_AL_METHOD(void, adjust_patches, (KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
+	
+	/* note control functions */
+	KDR_AL_METHOD(void, key_on, (int inst, int note, int bend, int vol, int pan));
+	KDR_AL_METHOD(void, key_off, (int voice));
+	KDR_AL_METHOD(void, set_volume, (int voice, int vol));
+	KDR_AL_METHOD(void, set_pitch, (int voice, int note, int bend));
+	KDR_AL_METHOD(void, set_pan, (int voice, int pan));
+	KDR_AL_METHOD(void, set_vibrato, (int voice, int amount));
+} KDR_MIDI_DRIVER;
+
+typedef struct KDR_MIDI_CTX
+{
+	KDR_MIDI_DRIVER *midi_driver;
+	int midi_card;
+	long _midi_tick;
+	
+	KDR_AL_PROP_VAR(volatile long, midi_pos);       /* current position in the midi file, in beats */
+	KDR_AL_PROP_VAR(volatile long, midi_time);      /* current position in the midi file, in seconds */
+	KDR_AL_PROP_VAR(long,          midi_loop_start);         /* where to loop back to at EOF */
+	KDR_AL_PROP_VAR(long,          midi_loop_end);           /* loop when we hit this position */
+	
+	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_msg_callback, (int msg, int byte1, int byte2));
+	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_meta_callback, (int type, KDR_AL_CONST unsigned char *data, int length));
+	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *data, int length));
+	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_recorder, (unsigned char data));
+} KDR_MIDI_CTX;
+
+#define KDR_MIDI_OPL2             KDR_AL_ID('O','P','L','2')
+#define KDR_MIDI_2XOPL2           KDR_AL_ID('O','P','L','X')
+#define KDR_MIDI_OPL3             KDR_AL_ID('O','P','L','3')
+
+extern KDR_MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
+
+void kdr_install_opl_midi(int id);
+int kdr_load_ibk(const char *filename, int drums);
 
 #ifdef KDR_INTERNAL
 	// MACROS NEEDED ---------------------------------------------------------------
@@ -80,25 +155,10 @@
 	#define _AL_REALLOC(PTR, SIZE)   (realloc(PTR, SIZE))
 	
 	#endif
-
-#endif
-
-#define KDR_MIDI_TRACKS           32       /* able to handle this many */
-
-typedef struct KDR_MIDI                    /* a midi file */
-{
-   int divisions;                      /* number of ticks per quarter note */
-   struct {
-      unsigned char *data;             /* MIDI message stream */
-      int len;                         /* length of the track data */
-   } track[KDR_MIDI_TRACKS];
-} KDR_MIDI;
-
-
-#ifdef KDR_INTERNAL
 	
 	#define MIDI        KDR_MIDI
 	#define MIDI_TRACKS KDR_MIDI_TRACKS
+	#define MIDI_DRIVER KDR_MIDI_DRIVER
 	
 	// STUFF FROM Allegro's midi.h -------------------------------------------------
 	#if 1
@@ -108,41 +168,6 @@ typedef struct KDR_MIDI                    /* a midi file */
 	#define MIDI_AUTODETECT       -1
 	#define MIDI_NONE             0
 	#define MIDI_DIGMID           AL_ID('D','I','G','I')
-	
-	typedef struct MIDI_DRIVER             /* driver for playing midi music */
-	{
-	int  id;                            /* driver ID code */
-	AL_CONST char *name;                /* driver name */
-	AL_CONST char *desc;                /* description string */
-	AL_CONST char *ascii_name;          /* ASCII format name string */
-	int  voices;                        /* available voices */
-	int  basevoice;                     /* voice number offset */
-	int  max_voices;                    /* maximum voices we can support */
-	int  def_voices;                    /* default number of voices to use */
-	int  xmin, xmax;                    /* reserved voice range */
-	
-	/* setup routines */
-	AL_METHOD(int,  detect, (int input));
-	AL_METHOD(int,  init, (int input, int voices));
-	AL_METHOD(void, exit, (int input));
-	AL_METHOD(int,  set_mixer_volume, (int volume));
-	AL_METHOD(int,  get_mixer_volume, (void));
-	
-	/* raw MIDI output to MPU-401, etc. */
-	AL_METHOD(void, raw_midi, (int data));
-	
-	/* dynamic patch loading routines */
-	AL_METHOD(int,  load_patches, (AL_CONST char *patches, AL_CONST char *drums));
-	AL_METHOD(void, adjust_patches, (AL_CONST char *patches, AL_CONST char *drums));
-	
-	/* note control functions */
-	AL_METHOD(void, key_on, (int inst, int note, int bend, int vol, int pan));
-	AL_METHOD(void, key_off, (int voice));
-	AL_METHOD(void, set_volume, (int voice, int vol));
-	AL_METHOD(void, set_pitch, (int voice, int note, int bend));
-	AL_METHOD(void, set_pan, (int voice, int pan));
-	AL_METHOD(void, set_vibrato, (int voice, int amount));
-	} MIDI_DRIVER;
 	
 	#define midi_driver             kdr_midi_driver
 	#define midi_card               kdr_midi_card

@@ -6,8 +6,7 @@
 #include <allegro.h>
 
 #include "ymfm_lib.h"
-#include "kdr_adlib.h"
-#include "kdr_aintern.h"
+#include "kdr_midi.h"
 #include "wav.h"
 #include "crc32.h"
 
@@ -27,6 +26,7 @@ int main(int argc, char **argv)
 	int maxsecs = INT_MAX;
 	int wavonly = 0;
 	char *ibk_fn = 0;
+	char *ibkd_fn = 0;
 	
 	//Handle command line arguments
 	for(i = 1; i < argc; i++){
@@ -46,6 +46,7 @@ int main(int argc, char **argv)
 			}
 			ARG("-wavonly") wavonly = 1;
 			ARG("-ibk=") ibk_fn = ARGVAL;
+			ARG("-ibkd=") ibkd_fn = ARGVAL;
 		}
 		else{
 			strcpy(midi_fn, arg);
@@ -103,6 +104,7 @@ int main(int argc, char **argv)
 	}
 	
 	if(ibk_fn) kdr_load_ibk(ibk_fn, 0);
+	if(ibkd_fn) kdr_load_ibk(ibkd_fn, 1);
 	
 	crc32_state_t crc;
 	crc32_init(crc);

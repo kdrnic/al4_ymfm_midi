@@ -23,7 +23,7 @@
 //#include <allegro.h>
 
 #define KDR_INTERNAL
-#include "kdr_aintern.h"
+#include "kdr_midi.h"
 //#include "allegro/platform/aintdos.h"
 
 //#ifndef ALLEGRO_DOS
@@ -31,7 +31,6 @@
 //#endif
 
 #include "ymfm_lib.h"
-#include "kdr_adlib.h"
 
 #define MIDI_OPL2   KDR_MIDI_OPL2   //         AL_ID('O','P','L','2')
 #define MIDI_2XOPL2 KDR_MIDI_2XOPL2 //         AL_ID('O','P','L','X')
