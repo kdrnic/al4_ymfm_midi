@@ -296,18 +296,18 @@ void operator delete(void* p, unsigned long i)
 #include "../libresample/include/libresample.h"
 #endif
 
-struct reg_write_t
-{
-	int reg;
-	unsigned char data;
-};
+#include <stdio.h>
+#define __STDC_FORMAT_MACROS 
+#include <inttypes.h>
 
 static unsigned int output_rate, chip_rate;
 static vgm_chip_base *chip;
-static std::vector<reg_write_t> reg_writes;
 static int stereo;
 static std::vector<float> f_buffer[2];
 static void *resampler[2];
+emulated_time output_pos = 0;
+
+FILE *reg_log = 0;
 
 void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 {
@@ -325,18 +325,19 @@ void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 	);
 	resampler[1] = resample_dup(resampler[0]);
 	#endif
+	
+	//reg_log = fopen("regw.log", "w");
 }
 
 void ymfm_write(int reg, unsigned char data)
 {
-	reg_write_t rw = {reg, data};
-	reg_writes.push_back(rw);
+	if(reg_log) fprintf(reg_log, "%" PRId64 " %d %u\n", output_pos, reg, data);
+	chip->write(reg, data);
 }
 
 void ymfm_generate(void *buffer, int num_samples)
 {
 	emulated_time output_step = 0x100000000ull / chip_rate;
-	static emulated_time output_pos = 0;
 	
 	//Number of samples to generate from OPL (not counting stereo)
 	int num_samples2 = (num_samples * chip_rate) / output_rate;
@@ -350,13 +351,6 @@ void ymfm_generate(void *buffer, int num_samples)
 	if(u16buffer2_siz < num_samples2 * 2){
 		u16buffer2_siz = num_samples2 * 2;
 		u16buffer2 = (uint16_t *) realloc((void *) u16buffer2, sizeof(*u16buffer2) * u16buffer2_siz);
-	}
-	
-	//Write in registers
-	while(!reg_writes.empty()){
-		reg_write_t front = reg_writes.front();
-		chip->write(front.reg, front.data);
-		reg_writes.erase(reg_writes.begin());
 	}
 	
 	for(int i = 0; i < num_samples2; i++){

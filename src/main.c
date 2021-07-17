@@ -83,7 +83,10 @@ int main(int argc, char **argv)
 	ymfm_init(SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
 	
 	//Initialize OPL driver
-	kdr_install_opl_midi(KDR_MIDI_OPL3);
+	KDR_MIDI_CTX ctx;
+	kdr_install_driver(&ctx, &kdr_midi_opl3);
+	if(ibk_fn) kdr_load_ibk(&ctx, ibk_fn, 0);
+	if(ibkd_fn) kdr_load_ibk(&ctx, ibkd_fn, 1);
 	
 	//File selection dialog if file not passed as argument
 	if(!strlen(midi_fn)){
@@ -96,15 +99,12 @@ int main(int argc, char **argv)
 		}
 	}
 	//Load MIDI file
-	mid = kdr_load_midi(midi_fn);
+	mid = kdr_load_midi(&ctx, midi_fn);
 	if(!mid){
 		if(alert("Couldn't load MIDI file.", "Maybe it is broken.", "Let's try again.", "Yes, please", "I am an idiot", 'y', 'n')){
 			goto filesel;
 		}
 	}
-	
-	if(ibk_fn) kdr_load_ibk(ibk_fn, 0);
-	if(ibkd_fn) kdr_load_ibk(ibkd_fn, 1);
 	
 	crc32_state_t crc;
 	crc32_init(crc);
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 	clear(screen);
 	
 	//Calculate MIDI duration
-	kdr_get_midi_length(mid);
+	kdr_get_midi_length(&ctx, mid);
 	nbeats = -kdr_midi_pos;
 	nsecs = kdr_midi_time;
 	
@@ -128,10 +128,10 @@ int main(int argc, char **argv)
 	uint16_t *wavbuf = malloc(sizeof(*wavbuf) * wavbuf_siz);
 	
 	//Start playing
-	kdr_play_midi(mid, 1);
+	kdr_play_midi(&ctx, mid, 1);
 	
 	if(firstseek){
-		kdr_midi_seek(firstseek);
+		kdr_midi_seek(&ctx, firstseek);
 	}
 	
 	rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
@@ -173,17 +173,17 @@ int main(int argc, char **argv)
 			}
 			if(seek){
 				redrawbar = 1;
-				kdr_midi_seek(seekto);
+				kdr_midi_seek(&ctx, seekto);
 			}
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 1;
-				kdr_midi_pause();
+				kdr_midi_pause(&ctx);
 			}
 		}
 		else{
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 0;
-				kdr_midi_resume();
+				kdr_midi_resume(&ctx);
 			}
 		}
 		oldsp = key[KEY_SPACE];
@@ -198,7 +198,7 @@ int main(int argc, char **argv)
 			while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
 			for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
 				ymfm_generate(audio_buf2, audio_buf_siz2);
-				kdr_update_midi(audio_buf_siz2, sampling_rate);
+				kdr_update_midi(&ctx, audio_buf_siz2, sampling_rate);
 			}
 			
 			//Also add to WAV file capture:

@@ -49,6 +49,8 @@ static void fm_set_pitch(int voice, int note, int bend);
 
 static char adlib_desc[256] = EMPTY_STRING;
 
+//MIDI_DRIVER *midi_driver;
+
 /*
    .id               =                
    .name             =  
@@ -246,7 +248,9 @@ static int fm_patch[18];
  */
 //MODIFIED TO USE ymfm RATHER THAN MS-DOS outportb
 static void fm_write(int reg, unsigned char data)
-{
+{	
+   assert(reg >= 0 && reg <= 0x1FF);
+   
    ymfm_write(reg, data);
    #if 0
    int i;
@@ -609,6 +613,7 @@ END_OF_STATIC_FUNCTION(fm_key_off);
  */
 static void fm_set_volume(int voice, int vol)
 {
+   if(voice < 0 || voice >= midi_driver->voices) return;
    vol = fm_level[voice] * fm_vol_table[vol] / 128;
    fm_write(0x43+fm_offset[voice], (63-vol) | fm_keyscale[voice]);
    if (fm_feedback[voice] & 1)
@@ -821,7 +826,7 @@ static int fm_detect(int input)
 /* load_ibk:
  *  Reads in a .IBK patch set file, for use by the Adlib driver.
  */
-int kdr_load_ibk(AL_CONST char *filename, int drums)
+int kdr_load_ibk(KDR_MIDI_CTX *ctx, AL_CONST char *filename, int drums)
 {
    char sig[4];
    FM_INSTRUMENT *inst;
@@ -977,25 +982,4 @@ static int fm_init(int input, int voices)
 static void fm_exit(int input)
 {
    fm_reset(0);
-}
-
-void kdr_install_opl_midi(int id)
-{
-	switch(id){
-		case KDR_MIDI_OPL2:
-			kdr_midi_driver = &kdr_midi_opl2;
-			kdr_midi_card = id;
-			break;
-		case KDR_MIDI_OPL3:
-			kdr_midi_driver = &kdr_midi_opl3;
-			kdr_midi_card = id;
-			break;
-		case KDR_MIDI_2XOPL2:
-			kdr_midi_driver = &kdr_midi_2xopl2;
-			kdr_midi_card = id;
-			break;
-		default:
-			return;
-	}
-	midi_driver->init(0, midi_driver->voices);
 }
