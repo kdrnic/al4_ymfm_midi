@@ -141,7 +141,6 @@ typedef struct KDR_MIDI_CTX
 	
 	const KDR_MIDI_DRIVER *midi_driver;
 	int midi_card;
-	long _midi_tick;
 	
 	KDR_AL_PROP_VAR(volatile long, midi_pos);       /* current position in the midi file, in beats */
 	KDR_AL_PROP_VAR(volatile long, midi_time);      /* current position in the midi file, in seconds */
@@ -152,10 +151,15 @@ typedef struct KDR_MIDI_CTX
 	KDR_AL_PROP_FUNCPTR(void,      midi_meta_callback, (struct KDR_MIDI_CTX *ctx, int type, KDR_AL_CONST unsigned char *data, int length));
 	KDR_AL_PROP_FUNCPTR(void,      midi_sysex_callback, (struct KDR_MIDI_CTX *ctx, KDR_AL_CONST unsigned char *data, int length));
 	
+	// INTERNAL MEMBERS, NOT FOR USER -----------------------------------------------------------------------
+	#if 1
 	//Taken from KDR_MIDI_DRIVER to force it used as const
 	int xmin, xmax;
 	
-	//Former static globalss from midi.c ----------------------------------------------------------------------
+	void *driver_data;
+	
+	//Former static globalss from midi.c
+	long _midi_tick;
 	KDR_MIDI *midifile;                      /* the file that is playing */
 	
 	int _midi_volume;
@@ -186,6 +190,8 @@ typedef struct KDR_MIDI_CTX
 	
 	int midi_seeking;                        /* set during seeks */
 	int midi_looping;                        /* set during loops */
+	#endif
+	// END OF INTERNAL MEMBERS ------------------------------------------------------------------------------
 } KDR_MIDI_CTX;
 
 #define KDR_MIDI_OPL2             KDR_AL_ID('O','P','L','2')
