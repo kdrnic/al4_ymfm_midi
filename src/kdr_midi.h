@@ -101,10 +101,9 @@ typedef struct KDR_MIDI_CTX
 	KDR_AL_PROP_VAR(long,          midi_loop_start);         /* where to loop back to at EOF */
 	KDR_AL_PROP_VAR(long,          midi_loop_end);           /* loop when we hit this position */
 	
-	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_msg_callback, (int msg, int byte1, int byte2));
-	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_meta_callback, (int type, KDR_AL_CONST unsigned char *data, int length));
-	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *data, int length));
-	KDR_AL_PROP_FUNCPTR(void,      kdr_midi_recorder, (unsigned char data));
+	KDR_AL_PROP_FUNCPTR(void,      midi_msg_callback, (struct KDR_MIDI_CTX *ctx, int msg, int byte1, int byte2));
+	KDR_AL_PROP_FUNCPTR(void,      midi_meta_callback, (struct KDR_MIDI_CTX *ctx, int type, KDR_AL_CONST unsigned char *data, int length));
+	KDR_AL_PROP_FUNCPTR(void,      midi_sysex_callback, (struct KDR_MIDI_CTX *ctx, KDR_AL_CONST unsigned char *data, int length));
 } KDR_MIDI_CTX;
 
 #define KDR_MIDI_OPL2             KDR_AL_ID('O','P','L','2')
@@ -115,6 +114,19 @@ extern KDR_MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
 
 void kdr_install_driver(KDR_MIDI_CTX *ctx, KDR_MIDI_DRIVER *drv);
 int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
+
+KDR_AL_FUNC(KDR_MIDI *,   kdr_load_midi,        (KDR_MIDI_CTX *ctx, KDR_AL_CONST char *filename));
+KDR_AL_FUNC(void,         kdr_destroy_midi,     (KDR_MIDI_CTX *ctx, KDR_MIDI *midi));
+KDR_AL_FUNC(int,          kdr_play_midi,        (KDR_MIDI_CTX *ctx, KDR_MIDI *midi, int loop));
+KDR_AL_FUNC(int,          kdr_play_looped_midi, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi, int loop_start, int loop_end));
+KDR_AL_FUNC(void,         kdr_stop_midi,        (KDR_MIDI_CTX *ctx));
+KDR_AL_FUNC(void,         kdr_midi_pause,       (KDR_MIDI_CTX *ctx));
+KDR_AL_FUNC(void,         kdr_midi_resume,      (KDR_MIDI_CTX *ctx));
+KDR_AL_FUNC(int,          kdr_midi_seek,        (KDR_MIDI_CTX *ctx, int target));
+KDR_AL_FUNC(int,          kdr_get_midi_length,  (KDR_MIDI_CTX *ctx, KDR_MIDI *midi));
+KDR_AL_FUNC(void,         kdr_midi_out,         (KDR_MIDI_CTX *ctx, unsigned char *data, int length));
+KDR_AL_FUNC(int,          kdr_load_midi_patches,(KDR_MIDI_CTX *ctx));
+KDR_AL_FUNC(void,         kdr_update_midi,      (KDR_MIDI_CTX *ctx, int samples, int sampl_rate));
 
 #ifdef KDR_INTERNAL
 	// MACROS NEEDED ---------------------------------------------------------------
@@ -179,10 +191,6 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define MIDI_NONE             0
 	#define MIDI_DIGMID           AL_ID('D','I','G','I')
 	
-	#define midi_pos                kdr_midi_pos
-	#define midi_time               kdr_midi_time
-	#define midi_loop_start         kdr_midi_loop_start
-	#define midi_loop_end           kdr_midi_loop_end
 	#define load_midi               kdr_load_midi
 	#define destroy_midi            kdr_destroy_midi
 	#define play_midi               kdr_play_midi
@@ -194,13 +202,7 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define get_midi_length         kdr_get_midi_length
 	#define midi_out                kdr_midi_out
 	#define load_midi_patches       kdr_load_midi_patches
-	#define midi_msg_callback       kdr_midi_msg_callback
-	#define midi_meta_callback      kdr_midi_meta_callback
-	#define midi_sysex_callback     kdr_midi_sysex_callback
-	#define midi_recorder           kdr_midi_recorder
-	#define lock_midi               kdr_lock_midi
 	#define _midi_allocate_voice    kdr_midi_allocate_voice
-	#define _midi_tick              kdr_midi_tick
 	#define _dummy_noop2            kdr_dummy_noop2
 	#define _dummy_adjust_patches   kdr_dummy_adjust_patches
 	#define _dummy_detect           kdr_dummy_detect
@@ -216,7 +218,6 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define midi_player             kdr_midi_player
 	
 	AL_FUNC(int, _midi_allocate_voice, (KDR_MIDI_CTX *ctx, int min, int max));
-	AL_VAR(volatile long, _midi_tick);
 	
 	int  _dummy_detect(struct KDR_MIDI_CTX *ctx, int input) ;
 	int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices) ;
@@ -233,28 +234,6 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 
 	#endif
 #endif
-	
-KDR_AL_VAR(volatile long, kdr_midi_pos);       /* current position in the midi file, in beats */
-KDR_AL_VAR(volatile long, kdr_midi_time);      /* current position in the midi file, in seconds */
-KDR_AL_VAR(long,          kdr_midi_loop_start);         /* where to loop back to at EOF */
-KDR_AL_VAR(long,          kdr_midi_loop_end);           /* loop when we hit this position */
-KDR_AL_FUNC(KDR_MIDI *,   kdr_load_midi, (KDR_MIDI_CTX *ctx, KDR_AL_CONST char *filename));
-KDR_AL_FUNC(void,         kdr_destroy_midi, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi));
-KDR_AL_FUNC(int,          kdr_play_midi, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi, int loop));
-KDR_AL_FUNC(int,          kdr_play_looped_midi, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi, int loop_start, int loop_end));
-KDR_AL_FUNC(void,         kdr_stop_midi, (KDR_MIDI_CTX *ctx));
-KDR_AL_FUNC(void,         kdr_midi_pause, (KDR_MIDI_CTX *ctx));
-KDR_AL_FUNC(void,         kdr_midi_resume, (KDR_MIDI_CTX *ctx));
-KDR_AL_FUNC(int,          kdr_midi_seek, (KDR_MIDI_CTX *ctx, int target));
-KDR_AL_FUNC(int,          kdr_get_midi_length, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi));
-KDR_AL_FUNC(void,         kdr_midi_out, (KDR_MIDI_CTX *ctx, unsigned char *data, int length));
-KDR_AL_FUNC(int,          kdr_load_midi_patches, (KDR_MIDI_CTX *ctx));
-KDR_AL_FUNCPTR(void,      kdr_midi_msg_callback, (int msg, int byte1, int byte2));
-KDR_AL_FUNCPTR(void,      kdr_midi_meta_callback, (int type, KDR_AL_CONST unsigned char *data, int length));
-KDR_AL_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *data, int length));
-KDR_AL_FUNCPTR(void,      kdr_midi_recorder, (unsigned char data));
-KDR_AL_FUNC(void,         kdr_lock_midi, (struct KDR_MIDI *midi));
-void kdr_update_midi(KDR_MIDI_CTX *ctx, int samples, int sampl_rate);
 
 #ifdef __cplusplus
    }

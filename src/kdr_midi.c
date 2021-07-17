@@ -118,12 +118,8 @@ typedef struct PATCH_TABLE                      /* GM -> external synth */
 } PATCH_TABLE;
 
 
-volatile long midi_pos = -1;                    /* current position in MIDI file */
-volatile long midi_time = 0;                    /* current position in seconds */
 static volatile long midi_timers;               /* current position in allegro-timer-ticks */
 static long midi_pos_counter;                   /* delta for midi_pos */
-
-volatile long _midi_tick = 0;                   /* counter for killing notes */
 
 static void midi_player(KDR_MIDI_CTX *ctx);                  /* core MIDI player routine */
 static void prepare_to_play(KDR_MIDI_CTX *ctx, MIDI *midi);
@@ -132,9 +128,6 @@ static void midi_lock_mem(void);
 static MIDI *midifile = NULL;                   /* the file that is playing */
 
 static int midi_loop = 0;                       /* repeat at eof? */
-
-long midi_loop_start = -1;                      /* where to loop back to */
-long midi_loop_end = -1;                        /* loop at this position */
 
 static int midi_semaphore = 0;                  /* reentrancy flag */
 static int midi_loaded_patches = FALSE;         /* loaded entire patch set? */
@@ -158,11 +151,6 @@ static PATCH_TABLE patch_table[128];            /* GM -> external synth */
 
 static int midi_seeking;                        /* set during seeks */
 static int midi_looping;                        /* set during loops */
-
-/* hook functions */
-void (*midi_msg_callback)(int msg, int byte1, int byte2) = NULL;
-void (*midi_meta_callback)(int type, AL_CONST unsigned char *data, int length) = NULL;
-void (*midi_sysex_callback)(AL_CONST unsigned char *data, int length) = NULL;
 
 /*
 KDRNIC's solution:
@@ -194,24 +182,6 @@ void kdr_update_midi(KDR_MIDI_CTX *ctx, int samples, int sampl_rate)
 		midi_player(ctx);
 		ctx->int_last = ctx->int_time;
 	}
-}
-
-/* lock_midi:
- *  Locks a MIDI file into physical memory. Pretty important, since they
- *  are mostly accessed inside interrupt handlers.
- */
-void lock_midi(MIDI *midi)
-{
-   int c;
-   ASSERT(midi);
-
-   LOCK_DATA(midi, sizeof(MIDI));
-
-   for (c=0; c<MIDI_TRACKS; c++) {
-      if (midi->track[c].data) {
-	 LOCK_DATA(midi->track[c].data, midi->track[c].len);
-      }
-   }
 }
 
 #include "kdr_packfile.h"
@@ -302,7 +272,6 @@ MIDI *load_midi(KDR_MIDI_CTX *ctx, AL_CONST char *filename)
    }
 
    pack_fclose(fp);
-   lock_midi(midi);
    return midi;
 
    /* oh dear... */
@@ -455,7 +424,7 @@ static void midi_note_off(KDR_MIDI_CTX *ctx, int channel, int note)
       if (voice >= 0) {
 	 midi_driver->key_off(ctx, voice + midi_driver->basevoice);
 	 midi_voice[voice].note = -1;
-	 midi_voice[voice].time = _midi_tick;
+	 midi_voice[voice].time = ctx->_midi_tick;
 	 midi_channel[channel].note[note][layer] = -1; 
 	 done = TRUE;
       }
@@ -562,7 +531,7 @@ int _midi_allocate_voice(KDR_MIDI_CTX *ctx, int min, int max)
    midi_voice[voice].channel = midi_alloc_channel;
    midi_voice[voice].note = midi_alloc_note;
    midi_voice[voice].volume = midi_alloc_vol;
-   midi_voice[voice].time = _midi_tick;
+   midi_voice[voice].time = ctx->_midi_tick;
    midi_channel[midi_alloc_channel].note[midi_alloc_note][layer] = voice; 
 
    return voice + midi_driver->basevoice;
@@ -842,14 +811,14 @@ END_OF_STATIC_FUNCTION(process_controller);
 /* process_meta_event:
  *  Processes the next meta-event on the specified track.
  */
-static void process_meta_event(AL_CONST unsigned char **pos, long *timer)
+static void process_meta_event(KDR_MIDI_CTX *ctx, AL_CONST unsigned char **pos, long *timer)
 {
    unsigned char metatype = *((*pos)++);
    long length = parse_var_len(pos);
    long tempo;
 
-   if (midi_meta_callback)
-      midi_meta_callback(metatype, *pos, length);
+   if (ctx->midi_meta_callback)
+      ctx->midi_meta_callback(ctx, metatype, *pos, length);
 
    if (metatype == 0x2F) {                      /* end of track */
       *pos = NULL;
@@ -898,9 +867,9 @@ static void process_midi_event(KDR_MIDI_CTX *ctx, AL_CONST unsigned char **pos, 
    }
 
    /* program callback? */
-   if ((midi_msg_callback) && 
+   if ((ctx->midi_msg_callback) && 
        (event != 0xF0) && (event != 0xF7) && (event != 0xFF))
-      midi_msg_callback(event, byte1, byte2);
+      ctx->midi_msg_callback(ctx, event, byte1, byte2);
 
    channel = event & 0x0F;
 
@@ -946,8 +915,8 @@ static void process_midi_event(KDR_MIDI_CTX *ctx, AL_CONST unsigned char **pos, 
 	    case 0xF0:                          /* sysex */
 	    case 0xF7: 
 	       l = parse_var_len(pos);
-	       if (midi_sysex_callback)
-		  midi_sysex_callback(*pos, l);
+	       if (ctx->midi_sysex_callback)
+		  ctx->midi_sysex_callback(ctx, *pos, l);
 	       (*pos) += l;
 	       break;
 
@@ -960,7 +929,7 @@ static void process_midi_event(KDR_MIDI_CTX *ctx, AL_CONST unsigned char **pos, 
 	       break;
 
 	    case 0xFF:                          /* meta-event */
-	       process_meta_event(pos, timer);
+	       process_meta_event(ctx, pos, timer);
 	       break;
 
 	    default:
@@ -1001,10 +970,10 @@ static void midi_player(KDR_MIDI_CTX *ctx)
    
 
    midi_semaphore = TRUE;
-   _midi_tick++;
+   ctx->_midi_tick++;
 
    midi_timers += midi_timer_speed;
-   midi_time = midi_timers / TIMERS_PER_SECOND;
+   ctx->midi_time = midi_timers / TIMERS_PER_SECOND;
 
    do_it_all_again:
 
@@ -1036,7 +1005,7 @@ static void midi_player(KDR_MIDI_CTX *ctx)
    midi_pos_counter -= midi_timer_speed;
    while (midi_pos_counter <= 0) {
       midi_pos_counter += midi_pos_speed;
-      midi_pos++;
+      ctx->midi_pos++;
    }
 
    /* tempo change? */
@@ -1067,13 +1036,13 @@ static void midi_player(KDR_MIDI_CTX *ctx)
    }
 
    /* end of the music? */
-   if ((!active) || ((midi_loop_end > 0) && (midi_pos >= midi_loop_end))) {
+   if ((!active) || ((ctx->midi_loop_end > 0) && (ctx->midi_pos >= ctx->midi_loop_end))) {
       if ((midi_loop) && (!midi_looping)) {
-	 if (midi_loop_start > 0) {
+	 if (ctx->midi_loop_start > 0) {
 	    remove_int(ctx, midi_player);
 	    midi_semaphore = FALSE;
 	    midi_looping = TRUE;
-	    if (midi_seek(ctx, midi_loop_start) != 0) {
+	    if (midi_seek(ctx, ctx->midi_loop_start) != 0) {
 	       midi_looping = FALSE;
 	       stop_midi(ctx); 
 	       return;
@@ -1302,9 +1271,9 @@ static void prepare_to_play(KDR_MIDI_CTX *ctx, MIDI *midi)
    update_controllers(ctx);
 
    midifile = midi;
-   midi_pos = 0;
+   ctx->midi_pos = 0;
    midi_timers = 0;
-   midi_time = 0;
+   ctx->midi_time = 0;
    midi_pos_counter = 0;
    midi_speed = TIMERS_PER_SECOND / 2 / midifile->divisions;   /* 120 bpm */
    midi_new_speed = -1;
@@ -1363,8 +1332,8 @@ int play_midi(KDR_MIDI_CTX *ctx, MIDI *midi, int loop)
 	    return -1;
 
       midi_loop = loop;
-      midi_loop_start = -1;
-      midi_loop_end = -1;
+      ctx->midi_loop_start = -1;
+      ctx->midi_loop_end = -1;
 
       prepare_to_play(ctx, midi);
 
@@ -1374,10 +1343,10 @@ int play_midi(KDR_MIDI_CTX *ctx, MIDI *midi, int loop)
    else {
       midifile = NULL;
 
-      if (midi_pos > 0)
-	 midi_pos = -midi_pos;
-      else if (midi_pos == 0)
-	 midi_pos = -1;
+      if (ctx->midi_pos > 0)
+	 ctx->midi_pos = -ctx->midi_pos;
+      else if (ctx->midi_pos == 0)
+	 ctx->midi_pos = -1;
    }
 
    return 0;
@@ -1397,8 +1366,8 @@ int play_looped_midi(KDR_MIDI_CTX *ctx, MIDI *midi, int loop_start, int loop_end
    if (play_midi(ctx, midi, TRUE) != 0)
       return -1;
 
-   midi_loop_start = loop_start;
-   midi_loop_end = loop_end;
+   ctx->midi_loop_start = loop_start;
+   ctx->midi_loop_end = loop_end;
 
    return 0;
 }
@@ -1497,13 +1466,13 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
    midi_seeking = 1;
 
    /* are we seeking backwards? If so, skip back to the start of the file */
-   if (target <= midi_pos)
+   if (target <= ctx->midi_pos)
       prepare_to_play(ctx, midifile);
 
    /* now sit back and let midi_player get to the position */
-   while ((midi_pos < target) && (midi_pos >= 0)) {
+   while ((ctx->midi_pos < target) && (ctx->midi_pos >= 0)) {
       int mmpc = midi_pos_counter;
-      int mmp = midi_pos;
+      int mmp = ctx->midi_pos;
 
       mmpc -= midi_timer_speed;
       while (mmpc <= 0) {
@@ -1522,7 +1491,7 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
    ctx->midi_driver = old_driver;
    midi_seeking = 0;
 
-   if (midi_pos >= 0) {
+   if (ctx->midi_pos >= 0) {
       /* refresh the driver with any changed parameters */
       if (ctx->midi_driver->raw_midi) {
 	 for (c=0; c<16; c++) {
@@ -1575,9 +1544,9 @@ END_OF_FUNCTION(midi_seek);
 int get_midi_length(KDR_MIDI_CTX *ctx, MIDI *midi)
 {
     play_midi(ctx, midi, 0);
-    while (midi_pos < 0); /* Without this, midi_seek won't work. */
+    while (ctx->midi_pos < 0); /* Without this, midi_seek won't work. */
     midi_seek(ctx, INT_MAX);
-    return midi_time;
+    return ctx->midi_time;
 }
 
 
@@ -1593,7 +1562,7 @@ void midi_out(KDR_MIDI_CTX *ctx, unsigned char *data, int length)
    ASSERT(data);
 
    midi_semaphore = TRUE;
-   _midi_tick++;
+   ctx->_midi_tick++;
 
    while (pos < data+length)
       process_midi_event(ctx, (AL_CONST unsigned char**) &pos, &running_status, &timer);

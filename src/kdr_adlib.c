@@ -485,10 +485,10 @@ static INLINE void fm_trigger_drum(KDR_MIDI_CTX *ctx, int inst, int vol)
       d = 4;
 
    /* don't let drum sounds come too close together */
-   if (fm_drum_cached_time[d] == _midi_tick)
+   if (fm_drum_cached_time[d] == ctx->_midi_tick)
       return;
 
-   fm_drum_cached_time[d] = _midi_tick;
+   fm_drum_cached_time[d] = ctx->_midi_tick;
 
    fm_drum_mask &= (~drum->type);
    fm_write(0xBD, fm_drum_mask);

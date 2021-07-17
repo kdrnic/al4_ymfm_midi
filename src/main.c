@@ -120,8 +120,8 @@ int main(int argc, char **argv)
 	
 	//Calculate MIDI duration
 	kdr_get_midi_length(&ctx, mid);
-	nbeats = -kdr_midi_pos;
-	nsecs = kdr_midi_time;
+	nbeats = -ctx.midi_pos;
+	nsecs = ctx.midi_time;
 	
 	//Initialize some stuff for WAV file capture
 	int wavbuf_siz = (nsecs + 1) * sampling_rate * (1 + stereo), wavlen = 0;
@@ -137,14 +137,14 @@ int main(int argc, char **argv)
 	rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
 	
 	//Main loop
-	while(!key[KEY_ESC] && !(close && (kdr_midi_time >= nsecs || kdr_midi_time >= maxsecs))){
+	while(!key[KEY_ESC] && !(close && (ctx.midi_time >= nsecs || ctx.midi_time >= maxsecs))){
 		//START OF PLAYER UI CODE -----------------------------------------
 		#if 1
 		int cbeats, csecs, bar;
 		int seekto, seek = 0;
 		int multi = 1;
-		cbeats = kdr_midi_pos;
-		csecs = kdr_midi_time;
+		cbeats = ctx.midi_pos;
+		csecs = ctx.midi_time;
 		
 		if(key_shifts & KB_SHIFT_FLAG) multi = 4;
 		
