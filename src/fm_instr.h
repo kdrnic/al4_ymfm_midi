@@ -33,9 +33,9 @@ typedef struct FM_INSTRUMENT
    unsigned char type;
 } FM_INSTRUMENT;
 
+#define FM_INSTRUMENT_NUM 128
 
-
-static FM_INSTRUMENT fm_instrument[128] =
+static const FM_INSTRUMENT fm_instrument_preset[FM_INSTRUMENT_NUM] =
 {
 #if 1
 

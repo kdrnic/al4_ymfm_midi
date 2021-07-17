@@ -83,10 +83,10 @@ int main(int argc, char **argv)
 	ymfm_init(SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
 	
 	//Initialize OPL driver
-	KDR_MIDI_CTX ctx;
-	kdr_install_driver(&ctx, &kdr_midi_opl3);
-	if(ibk_fn) kdr_load_ibk(&ctx, ibk_fn, 0);
-	if(ibkd_fn) kdr_load_ibk(&ctx, ibkd_fn, 1);
+	KDR_MIDI_CTX *ctx = kdr_create_midi_ctx();
+	kdr_install_driver(ctx, &kdr_midi_opl3);
+	if(ibk_fn) kdr_load_ibk(ctx, ibk_fn, 0);
+	if(ibkd_fn) kdr_load_ibk(ctx, ibkd_fn, 1);
 	
 	//File selection dialog if file not passed as argument
 	if(!strlen(midi_fn)){
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 		}
 	}
 	//Load MIDI file
-	mid = kdr_load_midi(&ctx, midi_fn);
+	mid = kdr_load_midi(ctx, midi_fn);
 	if(!mid){
 		if(alert("Couldn't load MIDI file.", "Maybe it is broken.", "Let's try again.", "Yes, please", "I am an idiot", 'y', 'n')){
 			goto filesel;
@@ -119,32 +119,32 @@ int main(int argc, char **argv)
 	clear(screen);
 	
 	//Calculate MIDI duration
-	kdr_get_midi_length(&ctx, mid);
-	nbeats = -ctx.midi_pos;
-	nsecs = ctx.midi_time;
+	kdr_get_midi_length(ctx, mid);
+	nbeats = -ctx->midi_pos;
+	nsecs = ctx->midi_time;
 	
 	//Initialize some stuff for WAV file capture
 	int wavbuf_siz = (nsecs + 1) * sampling_rate * (1 + stereo), wavlen = 0;
 	uint16_t *wavbuf = malloc(sizeof(*wavbuf) * wavbuf_siz);
 	
 	//Start playing
-	kdr_play_midi(&ctx, mid, 1);
+	kdr_play_midi(ctx, mid, 1);
 	
 	if(firstseek){
-		kdr_midi_seek(&ctx, firstseek);
+		kdr_midi_seek(ctx, firstseek);
 	}
 	
 	rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
 	
 	//Main loop
-	while(!key[KEY_ESC] && !(close && (ctx.midi_time >= nsecs || ctx.midi_time >= maxsecs))){
+	while(!key[KEY_ESC] && !(close && (ctx->midi_time >= nsecs || ctx->midi_time >= maxsecs))){
 		//START OF PLAYER UI CODE -----------------------------------------
 		#if 1
 		int cbeats, csecs, bar;
 		int seekto, seek = 0;
 		int multi = 1;
-		cbeats = ctx.midi_pos;
-		csecs = ctx.midi_time;
+		cbeats = ctx->midi_pos;
+		csecs = ctx->midi_time;
 		
 		if(key_shifts & KB_SHIFT_FLAG) multi = 4;
 		
@@ -173,17 +173,17 @@ int main(int argc, char **argv)
 			}
 			if(seek){
 				redrawbar = 1;
-				kdr_midi_seek(&ctx, seekto);
+				kdr_midi_seek(ctx, seekto);
 			}
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 1;
-				kdr_midi_pause(&ctx);
+				kdr_midi_pause(ctx);
 			}
 		}
 		else{
 			if(key[KEY_SPACE] && !oldsp){
 				paused = 0;
-				kdr_midi_resume(&ctx);
+				kdr_midi_resume(ctx);
 			}
 		}
 		oldsp = key[KEY_SPACE];
@@ -198,7 +198,7 @@ int main(int argc, char **argv)
 			while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
 			for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
 				ymfm_generate(audio_buf2, audio_buf_siz2);
-				kdr_update_midi(&ctx, audio_buf_siz2, sampling_rate);
+				kdr_update_midi(ctx, audio_buf_siz2, sampling_rate);
 			}
 			
 			//Also add to WAV file capture:

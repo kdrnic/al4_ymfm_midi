@@ -34,7 +34,11 @@
 #define KDR_AL_PROP_FUNCPTR(type, name, args)            type (*name) args
 #define KDR_AL_PROP_VAR(type, name)              type name
 
-#define KDR_MIDI_TRACKS           32       /* able to handle this many */
+/* maximum number of layers in a single voice */
+#define KDR_MIDI_LAYERS  4
+										/* Theoretical maximums: */
+#define KDR_MIDI_VOICES           64    /* actual drivers may not be */
+#define KDR_MIDI_TRACKS           32    /* able to handle this many */
 
 typedef struct KDR_MIDI                    /* a midi file */
 {
@@ -50,14 +54,13 @@ struct KDR_MIDI_CTX;
 typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
 {
 	int  id;                            /* driver ID code */
-	KDR_AL_CONST char *name;                /* driver name */
-	KDR_AL_CONST char *desc;                /* description string */
-	KDR_AL_CONST char *ascii_name;          /* ASCII format name string */
+	KDR_AL_CONST char *name;            /* driver name */
+	KDR_AL_CONST char *desc;            /* description string */
+	KDR_AL_CONST char *ascii_name;      /* ASCII format name string */
 	int  voices;                        /* available voices */
 	int  basevoice;                     /* voice number offset */
 	int  max_voices;                    /* maximum voices we can support */
 	int  def_voices;                    /* default number of voices to use */
-	int  xmin, xmax;                    /* reserved voice range */
 	
 	/* setup routines */
 	KDR_AL_METHOD(int,  detect, (struct KDR_MIDI_CTX *ctx, int input));
@@ -85,6 +88,50 @@ typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
 typedef long long int KDR_LARGE_INT;
 _Static_assert(sizeof(KDR_LARGE_INT) >= 8, "KDR_LARGE_INT too small");
 
+typedef struct KDR_MIDI_TRACK                   /* a track in the MIDI file */
+{
+   unsigned char *pos;                          /* position in track data */
+   long timer;                                  /* time until next event */
+   unsigned char running_status;                /* last MIDI event */
+} KDR_MIDI_TRACK;
+
+
+typedef struct KDR_MIDI_CHANNEL                 /* a MIDI channel */
+{
+   int patch;                                   /* current sound */
+   int volume;                                  /* volume controller */
+   int pan;                                     /* pan position */
+   int pitch_bend;                              /* pitch bend position */
+   int new_volume;                              /* cached volume change */
+   int new_pitch_bend;                          /* cached pitch bend */
+   int note[128][KDR_MIDI_LAYERS];              /* status of each note */
+} KDR_MIDI_CHANNEL;
+
+typedef struct KDR_MIDI_VOICE                   /* a voice on the soundcard */
+{
+   int channel;                                 /* MIDI channel */
+   int note;                                    /* note (-1 = off) */
+   int volume;                                  /* note velocity */
+   long time;                                   /* when note was triggered */
+} KDR_MIDI_VOICE;
+
+
+typedef struct KDR_WAITING_NOTE                 /* a stored note-on request */
+{
+   int channel;
+   int note;
+   int volume;
+} KDR_WAITING_NOTE;
+
+
+typedef struct KDR_PATCH_TABLE                  /* GM -> external synth */
+{
+   int bank1;                                   /* controller #0 */
+   int bank2;                                   /* controller #32 */
+   int prog;                                    /* program change */
+   int pitch;                                   /* pitch shift */
+} KDR_PATCH_TABLE;
+
 typedef struct KDR_MIDI_CTX
 {
 	KDR_LARGE_INT
@@ -92,7 +139,7 @@ typedef struct KDR_MIDI_CTX
 		int_speed,
 		int_last;
 	
-	KDR_MIDI_DRIVER *midi_driver;
+	const KDR_MIDI_DRIVER *midi_driver;
 	int midi_card;
 	long _midi_tick;
 	
@@ -104,15 +151,52 @@ typedef struct KDR_MIDI_CTX
 	KDR_AL_PROP_FUNCPTR(void,      midi_msg_callback, (struct KDR_MIDI_CTX *ctx, int msg, int byte1, int byte2));
 	KDR_AL_PROP_FUNCPTR(void,      midi_meta_callback, (struct KDR_MIDI_CTX *ctx, int type, KDR_AL_CONST unsigned char *data, int length));
 	KDR_AL_PROP_FUNCPTR(void,      midi_sysex_callback, (struct KDR_MIDI_CTX *ctx, KDR_AL_CONST unsigned char *data, int length));
+	
+	//Taken from KDR_MIDI_DRIVER to force it used as const
+	int xmin, xmax;
+	
+	//Former static globalss from midi.c ----------------------------------------------------------------------
+	KDR_MIDI *midifile;                      /* the file that is playing */
+	
+	int _midi_volume;
+	
+	long midi_timers;                        /* current position in allegro-timer-ticks */
+	long midi_pos_counter;                   /* delta for midi_pos */
+	int midi_loop;                           /* repeat at eof? */
+	
+	int midi_semaphore;                      /* reentrancy flag */
+	int midi_loaded_patches;                 /* loaded entire patch set? */
+	
+	long midi_timer_speed;                   /* midi_player's timer speed */
+	int midi_pos_speed;                      /* MIDI delta -> midi_pos */
+	int midi_speed;                          /* MIDI delta -> timer */
+	int midi_new_speed;                      /* for tempo change events */
+	
+	int old_midi_volume;                     /* stored global volume */
+	
+	int midi_alloc_channel;                  /* so _midi_allocate_voice */
+	int midi_alloc_note;                     /* knows which note the */
+	int midi_alloc_vol;                      /* sound is associated with */
+	
+	struct KDR_MIDI_TRACK midi_track[KDR_MIDI_TRACKS];     /* the active tracks */
+	struct KDR_MIDI_VOICE midi_voice[KDR_MIDI_VOICES];     /* synth voice status */
+	struct KDR_MIDI_CHANNEL midi_channel[16];              /* MIDI channel info */
+	struct KDR_WAITING_NOTE midi_waiting[KDR_MIDI_VOICES]; /* notes still to be played */
+	struct KDR_PATCH_TABLE patch_table[128];               /* GM -> external synth */
+	
+	int midi_seeking;                        /* set during seeks */
+	int midi_looping;                        /* set during loops */
 } KDR_MIDI_CTX;
 
 #define KDR_MIDI_OPL2             KDR_AL_ID('O','P','L','2')
 #define KDR_MIDI_2XOPL2           KDR_AL_ID('O','P','L','X')
 #define KDR_MIDI_OPL3             KDR_AL_ID('O','P','L','3')
 
-extern KDR_MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
+extern const KDR_MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
 
-void kdr_install_driver(KDR_MIDI_CTX *ctx, KDR_MIDI_DRIVER *drv);
+KDR_MIDI_CTX *kdr_create_midi_ctx(void);
+void kdr_destroy_midi_ctx(KDR_MIDI_CTX *ctx);
+void kdr_install_driver(KDR_MIDI_CTX *ctx, const KDR_MIDI_DRIVER *drv);
 int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 
 KDR_AL_FUNC(KDR_MIDI *,   kdr_load_midi,        (KDR_MIDI_CTX *ctx, KDR_AL_CONST char *filename));
@@ -180,12 +264,12 @@ KDR_AL_FUNC(void,         kdr_update_midi,      (KDR_MIDI_CTX *ctx, int samples,
 	
 	#define MIDI        KDR_MIDI
 	#define MIDI_TRACKS KDR_MIDI_TRACKS
+	#define MIDI_VOICES KDR_MIDI_VOICES
 	#define MIDI_DRIVER KDR_MIDI_DRIVER
+	#define MIDI_LAYERS KDR_MIDI_LAYERS
 	
 	// STUFF FROM Allegro's midi.h -------------------------------------------------
 	#if 1
-										/* Theoretical maximums: */
-	#define MIDI_VOICES           64       /* actual drivers may not be */
 	
 	#define MIDI_AUTODETECT       -1
 	#define MIDI_NONE             0

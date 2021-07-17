@@ -47,37 +47,7 @@ static void fm_key_off(struct KDR_MIDI_CTX *ctx, int voice);
 static void fm_set_volume(struct KDR_MIDI_CTX *ctx, int voice, int vol);
 static void fm_set_pitch(struct KDR_MIDI_CTX *ctx, int voice, int note, int bend);
 
-static char adlib_desc[256] = EMPTY_STRING;
-
-/*
-   .id               =                
-   .name             =  
-   .desc             =  
-   .ascii_name       =  
-   .voices           =            
-   .basevoice        =            
-   .max_voices       =            
-   .def_voices       =            
-   .xmin             = 
-   .xmax             =      
-   .detect           = 
-   .init             = 
-   .exit             = 
-   .set_mixer_volume = 
-   .get_mixer_volume = 
-   .raw_midi         = 
-   .load_patches     = 
-   .adjust_patches   = 
-   .key_on           = 
-   .key_off          = 
-   .set_volume       = 
-   .set_pitch        = 
-   .set_pan          = 
-   .set_vibrato      = 
-*/
-
-
-MIDI_DRIVER kdr_midi_opl2 =
+const MIDI_DRIVER kdr_midi_opl2 =
 {
    .id               = MIDI_OPL2,
    .name             = EMPTY_STRING, 
@@ -87,8 +57,6 @@ MIDI_DRIVER kdr_midi_opl2 =
    .basevoice        = 0, 
    .max_voices       = 9, 
    .def_voices       = 9, 
-   .xmin             = -1, 
-   .xmax             = -1,
    .detect           = fm_detect,
    .init             = fm_init,
    .exit             = fm_exit,
@@ -107,7 +75,7 @@ MIDI_DRIVER kdr_midi_opl2 =
 
 
 
-MIDI_DRIVER kdr_midi_2xopl2 =
+const MIDI_DRIVER kdr_midi_2xopl2 =
 {
    .id               = MIDI_2XOPL2,
    .name             = EMPTY_STRING, 
@@ -117,8 +85,6 @@ MIDI_DRIVER kdr_midi_2xopl2 =
    .basevoice        = 0, 
    .max_voices       = 18,
    .def_voices       = 18, 
-   .xmin             = -1, 
-   .xmax             = -1,
    .detect           = fm_detect,
    .init             = fm_init,
    .exit             = fm_exit,
@@ -137,7 +103,7 @@ MIDI_DRIVER kdr_midi_2xopl2 =
 
 
 
-MIDI_DRIVER kdr_midi_opl3 =
+const MIDI_DRIVER kdr_midi_opl3 =
 {
    .id               = MIDI_OPL3,
    .name             = EMPTY_STRING, 
@@ -147,8 +113,6 @@ MIDI_DRIVER kdr_midi_opl3 =
    .basevoice        = 0, 
    .max_voices       = 18, 
    .def_voices       = 18,
-   .xmin             = -1, 
-   .xmax             = -1,
    .detect           = fm_detect,
    .init             = fm_init,
    .exit             = fm_exit,
@@ -178,6 +142,13 @@ MIDI_DRIVER kdr_midi_opl3 =
 #include "fm_instr.h"
 #include "fm_drum.h"
 
+struct fm_driver_data
+{
+	
+};
+
+static FM_INSTRUMENT fm_drum[FM_DRUM_NUM];
+static FM_INSTRUMENT fm_instrument[FM_INSTRUMENT_NUM];
 
 /* is the OPL in percussion mode? */
 static int fm_drum_mode = FALSE;
@@ -189,21 +160,21 @@ static int fm_delay_2 = 35;
 
 
 /* register offsets for each voice */
-static int fm_offset[18] = {
+static const int fm_offset[18] = {
    0x000, 0x001, 0x002, 0x008, 0x009, 0x00A, 0x010, 0x011, 0x012, 
    0x100, 0x101, 0x102, 0x108, 0x109, 0x10A, 0x110, 0x111, 0x112
 };
 
 
 /* for converting midi note numbers to FM frequencies */
-static int fm_freq[13] = {
+static const int fm_freq[13] = {
    0x157, 0x16B, 0x181, 0x198, 0x1B0, 0x1CA,
    0x1E5, 0x202, 0x220, 0x241, 0x263, 0x287, 0x2AE
 };
 
 
 /* logarithmic relationship between midi and FM volumes */
-static int fm_vol_table[128] = {
+static const int fm_vol_table[128] = {
    0,  11, 16, 19, 22, 25, 27, 29, 32, 33, 35, 37, 39, 40, 42, 43,
    45, 46, 48, 49, 50, 51, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
    64, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 75, 76, 77,
@@ -217,9 +188,9 @@ static int fm_vol_table[128] = {
 
 
 /* drum channel tables:          BD       SD       TT       CY       HH    */
-static int fm_drum_channel[] = { 6,       7,       8,       8,       7     };
-static int fm_drum_op1[] =     { TRUE,    FALSE,   TRUE,    FALSE,   TRUE  };
-static int fm_drum_op2[] =     { TRUE,    TRUE,    FALSE,   TRUE,    FALSE };
+static const int fm_drum_channel[] = { 6,       7,       8,       8,       7     };
+static const int fm_drum_op1[] =     { TRUE,    FALSE,   TRUE,    FALSE,   TRUE  };
+static const int fm_drum_op2[] =     { TRUE,    TRUE,    FALSE,   TRUE,    FALSE };
 
 
 /* cached information about the state of the drum channels */
@@ -250,20 +221,6 @@ static void fm_write(int reg, unsigned char data)
    assert(reg >= 0 && reg <= 0x1FF);
    
    ymfm_write(reg, data);
-   #if 0
-   int i;
-   int port = (reg & 0x100) ? _fm_port+2 : _fm_port;
-
-   outportb(port, reg & 0xFF);      /* write the register */
-
-   for (i=0; i<fm_delay_1; i++)     /* delay */
-      inportb(port);
-
-   outportb(port+1, data);          /* write the data */
-
-   for (i=0; i<fm_delay_2; i++)     /* delay */
-      inportb(port);
-    #endif
 }
 
 END_OF_STATIC_FUNCTION(fm_write);
@@ -277,14 +234,12 @@ END_OF_STATIC_FUNCTION(fm_write);
 static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
 {
    int i;
-   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   const KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
 
    for (i=0xF5; i>0; i--)
       fm_write(i, 0);
 
    if (ctx->midi_card == MIDI_OPL3) {          /* if we have an OPL3... */
-      fm_delay_1 = 1;
-      fm_delay_2 = 2;
 
       fm_write(0x105, 1);                 /* enable OPL3 mode */
 
@@ -298,8 +253,6 @@ static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
 	 fm_write(0x105, 0);              /* turn OPL3 mode off again */
    }
    else {
-      fm_delay_1 = 6;
-      fm_delay_2 = 35;
 
       if (ctx->midi_card == MIDI_2XOPL2) {     /* if we have a second OPL2... */
 	 for (i=0x1F5; i>0x100; i--)
@@ -334,8 +287,8 @@ static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
    fm_drum_mask = 0xC0;
    fm_write(0xBD, fm_drum_mask);          /* set AM and vibrato to high */
 
-   midi_driver->xmin = -1;
-   midi_driver->xmax = -1;
+   ctx->xmin = -1;
+   ctx->xmax = -1;
 }
 
 END_OF_STATIC_FUNCTION(fm_reset);
@@ -347,14 +300,14 @@ END_OF_STATIC_FUNCTION(fm_reset);
  */
 static void fm_set_drum_mode(struct KDR_MIDI_CTX *ctx, int usedrums)
 {
-   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   const KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int i;
 
    fm_drum_mode = usedrums;
    fm_drum_mask = usedrums ? 0xE0 : 0xC0;
 
-   midi_driver->xmin = usedrums ? 6 : -1;
-   midi_driver->xmax = usedrums ? 8 : -1;
+   ctx->xmin = usedrums ? 6 : -1;
+   ctx->xmax = usedrums ? 8 : -1;
 
    for (i=6; i<9; i++)
       if (ctx->midi_card == MIDI_OPL3)
@@ -538,7 +491,7 @@ static INLINE void fm_trigger_drum(KDR_MIDI_CTX *ctx, int inst, int vol)
 static void fm_key_on(KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan)
 {
    int voice;
-   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   const KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
 
    if (inst > 127) {                               /* drum sound? */
       inst -= 163;
@@ -614,7 +567,7 @@ END_OF_STATIC_FUNCTION(fm_key_off);
  */
 static void fm_set_volume(KDR_MIDI_CTX *ctx, int voice, int vol)
 {
-   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   const KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    if(voice < 0 || voice >= midi_driver->voices) return;
    vol = fm_level[voice] * fm_vol_table[vol] / 128;
    fm_write(0x43+fm_offset[voice], (63-vol) | fm_keyscale[voice]);
@@ -715,28 +668,6 @@ static int fm_set_mixer_volume(KDR_MIDI_CTX *ctx, int volume)
 //SHOULDN'T NORMALLY BE CALLED
 static int fm_is_there(void)
 {
-   #if 0
-   fm_write(1, 0);                        /* init test register */
-
-   fm_write(4, 0x60);                     /* reset both timers */
-   fm_write(4, 0x80);                     /* enable interrupts */
-
-   if (inportb(_fm_port) & 0xE0)
-      return FALSE;
-
-   fm_write(2, 0xFF);                     /* write 0xFF to timer 1 */
-   fm_write(4, 0x21);                     /* start timer 1 */
-
-   rest(100);
-
-   if ((inportb(_fm_port) & 0xE0) != 0xC0)
-      return FALSE;
-
-   fm_write(4, 0x60);                     /* reset both timers */
-   fm_write(4, 0x80);                     /* enable interrupts */
-
-   return TRUE;
-   #endif
    return TRUE;
 }
 
@@ -854,53 +785,9 @@ static int fm_init(KDR_MIDI_CTX *ctx, int input, int voices)
    int i;
 
    fm_reset(ctx, 1);
-
-   #if 0
-   for (i=0; i<2; i++) {
-      s = get_config_string(uconvert_ascii("sound", tmp1), uconvert_ascii(((i == 0) ? "ibk_file" : "ibk_drum_file"), tmp2), NULL);
-      if ((s) && (ugetc(s))) {
-	 if (load_ibk(s, (i > 0)) != 0) {
-	    uszprintf(allegro_error, ALLEGRO_ERROR_SIZE, get_config_text("Error reading .IBK file '%s'"), s);
-	    return -1;
-	 }
-      }
-   }
-   #endif
-
-   LOCK_VARIABLE(midi_opl2);
-   LOCK_VARIABLE(midi_2xopl2);
-   LOCK_VARIABLE(midi_opl3);
-   LOCK_VARIABLE(fm_instrument);
-   LOCK_VARIABLE(fm_drum);
-   LOCK_VARIABLE(_fm_port);
-   LOCK_VARIABLE(fm_offset);
-   LOCK_VARIABLE(fm_freq);
-   LOCK_VARIABLE(fm_vol_table);
-   LOCK_VARIABLE(fm_drum_channel);
-   LOCK_VARIABLE(fm_drum_op1);
-   LOCK_VARIABLE(fm_drum_op2);
-   LOCK_VARIABLE(fm_drum_cached_inst1);
-   LOCK_VARIABLE(fm_drum_cached_inst2);
-   LOCK_VARIABLE(fm_drum_cached_vol1);
-   LOCK_VARIABLE(fm_drum_cached_vol2);
-   LOCK_VARIABLE(fm_drum_cached_time);
-   LOCK_VARIABLE(fm_drum_mask);
-   LOCK_VARIABLE(fm_drum_mode);
-   LOCK_VARIABLE(fm_key);
-   LOCK_VARIABLE(fm_keyscale);
-   LOCK_VARIABLE(fm_feedback);
-   LOCK_VARIABLE(fm_level);
-   LOCK_VARIABLE(fm_patch);
-   LOCK_VARIABLE(fm_delay_1);
-   LOCK_VARIABLE(fm_delay_2);
-   LOCK_FUNCTION(fm_write);
-   LOCK_FUNCTION(fm_reset);
-   LOCK_FUNCTION(fm_set_drum_mode);
-   LOCK_FUNCTION(fm_key_on);
-   LOCK_FUNCTION(fm_key_off);
-   LOCK_FUNCTION(fm_set_volume);
-   LOCK_FUNCTION(fm_set_pitch);
-   LOCK_FUNCTION(fm_load_patches);
+   
+   memcpy(fm_drum, fm_drum_preset, sizeof(fm_drum));
+   memcpy(fm_instrument, fm_instrument_preset, sizeof(fm_instrument));
 
    return 0;
 }
