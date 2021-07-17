@@ -142,8 +142,8 @@ typedef struct KDR_MIDI_CTX
 	const KDR_MIDI_DRIVER *midi_driver;
 	int midi_card;
 	
-	KDR_AL_PROP_VAR(volatile long, midi_pos);       /* current position in the midi file, in beats */
-	KDR_AL_PROP_VAR(volatile long, midi_time);      /* current position in the midi file, in seconds */
+	KDR_AL_PROP_VAR(long, midi_pos);                         /* current position in the midi file, in beats */
+	KDR_AL_PROP_VAR(long, midi_time);                        /* current position in the midi file, in seconds */
 	KDR_AL_PROP_VAR(long,          midi_loop_start);         /* where to loop back to at EOF */
 	KDR_AL_PROP_VAR(long,          midi_loop_end);           /* loop when we hit this position */
 	
