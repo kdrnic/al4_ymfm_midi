@@ -29,18 +29,18 @@
 #define KDR_INTERNAL
 #include "kdr_midi.h"
 
-int  _dummy_detect(int input) { return TRUE; }
-int  _dummy_init(int input, int voices) { /*digi_none.desc = _midi_none.desc = get_config_text("The sound of silence");*/ return 0; }
-void _dummy_exit(int input) { }
-int  _dummy_set_mixer_volume(int volume) { return 0; }
-int  _dummy_get_mixer_volume(void) { return -1; }
-void _dummy_noop1(int p) { }
-void _dummy_noop2(int p1, int p2) { }
-void _dummy_noop3(int p1, int p2, int p3) { }
-void _dummy_raw_midi(int data) { }
-int  _dummy_load_patches(AL_CONST char *patches, AL_CONST char *drums) { return 0; }
-void _dummy_adjust_patches(AL_CONST char *patches, AL_CONST char *drums) { }
-void _dummy_key_on(int inst, int note, int bend, int vol, int pan) { }
+int  _dummy_detect(struct KDR_MIDI_CTX *ctx, int input) { return TRUE; }
+int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices) { /*digi_none.desc = _midi_none.desc = get_config_text("The sound of silence");*/ return 0; }
+void _dummy_exit(struct KDR_MIDI_CTX *ctx, int input) { }
+int  _dummy_set_mixer_volume(struct KDR_MIDI_CTX *ctx, int volume) { return 0; }
+int  _dummy_get_mixer_volume(struct KDR_MIDI_CTX *ctx) { return -1; }
+void _dummy_noop1(struct KDR_MIDI_CTX *ctx, int p) { }
+void _dummy_noop2(struct KDR_MIDI_CTX *ctx, int p1, int p2) { }
+void _dummy_noop3(struct KDR_MIDI_CTX *ctx, int p1, int p2, int p3) { }
+void _dummy_raw_midi(struct KDR_MIDI_CTX *ctx, int data) { }
+int  _dummy_load_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums) { return 0; }
+void _dummy_adjust_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums) { }
+void _dummy_key_on(struct KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan) { }
 
 int midi_card = MIDI_NONE;
 
@@ -67,8 +67,6 @@ static MIDI_DRIVER _midi_none =
    _dummy_noop2
 };
 static int _midi_volume = -1;
-
-MIDI_DRIVER *midi_driver = &_midi_none;
 
 /* maximum number of layers in a single voice */
 #define MIDI_LAYERS  4
@@ -130,7 +128,7 @@ static long midi_pos_counter;                   /* delta for midi_pos */
 volatile long _midi_tick = 0;                   /* counter for killing notes */
 
 static void midi_player(KDR_MIDI_CTX *ctx);                  /* core MIDI player routine */
-static void prepare_to_play(MIDI *midi);
+static void prepare_to_play(KDR_MIDI_CTX *ctx, MIDI *midi);
 static void midi_lock_mem(void);
 
 static MIDI *midifile = NULL;                   /* the file that is playing */
@@ -398,31 +396,33 @@ static INLINE int sort_out_volume(int c, int vol)
  *  MIDI data, using patch mapping tables. Assumes that midi_driver->raw_midi
  *  isn't NULL, so check before calling it!
  */
-static void raw_program_change(int channel, int patch)
+static void raw_program_change(KDR_MIDI_CTX *ctx, int channel, int patch)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    if (channel != 9) {
       /* bank change #1 */
       if (patch_table[patch].bank1 >= 0) {
-	 midi_driver->raw_midi(0xB0+channel);
-	 midi_driver->raw_midi(0);
-	 midi_driver->raw_midi(patch_table[patch].bank1);
+	 midi_driver->raw_midi(ctx, 0xB0+channel);
+	 midi_driver->raw_midi(ctx, 0);
+	 midi_driver->raw_midi(ctx, patch_table[patch].bank1);
       }
 
       /* bank change #2 */
       if (patch_table[patch].bank2 >= 0) {
-	 midi_driver->raw_midi(0xB0+channel);
-	 midi_driver->raw_midi(32);
-	 midi_driver->raw_midi(patch_table[patch].bank2);
+	 midi_driver->raw_midi(ctx, 0xB0+channel);
+	 midi_driver->raw_midi(ctx, 32);
+	 midi_driver->raw_midi(ctx, patch_table[patch].bank2);
       }
 
       /* program change */
-      midi_driver->raw_midi(0xC0+channel);
-      midi_driver->raw_midi(patch_table[patch].prog);
+      midi_driver->raw_midi(ctx, 0xC0+channel);
+      midi_driver->raw_midi(ctx, patch_table[patch].prog);
 
       /* update volume */
-      midi_driver->raw_midi(0xB0+channel);
-      midi_driver->raw_midi(7);
-      midi_driver->raw_midi(global_volume_fix(midi_channel[channel].volume-1));
+      midi_driver->raw_midi(ctx, 0xB0+channel);
+      midi_driver->raw_midi(ctx, 7);
+      midi_driver->raw_midi(ctx, global_volume_fix(midi_channel[channel].volume-1));
    }
 }
 
@@ -433,8 +433,9 @@ END_OF_STATIC_FUNCTION(raw_program_change);
 /* midi_note_off:
  *  Processes a MIDI note-off event.
  */
-static void midi_note_off(int channel, int note)
+static void midi_note_off(KDR_MIDI_CTX *ctx, int channel, int note)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int done = FALSE;
    int voice, layer;
    int c;
@@ -444,9 +445,9 @@ static void midi_note_off(int channel, int note)
       if (channel != 9)
 	 note += patch_table[midi_channel[channel].patch].pitch;
 
-      midi_driver->raw_midi(0x80+channel);
-      midi_driver->raw_midi(note);
-      midi_driver->raw_midi(0);
+      midi_driver->raw_midi(ctx, 0x80+channel);
+      midi_driver->raw_midi(ctx, note);
+      midi_driver->raw_midi(ctx, 0);
       return;
    }
 
@@ -454,7 +455,7 @@ static void midi_note_off(int channel, int note)
    for (layer=0; layer<MIDI_LAYERS; layer++) {
       voice = midi_channel[channel].note[note][layer];
       if (voice >= 0) {
-	 midi_driver->key_off(voice + midi_driver->basevoice);
+	 midi_driver->key_off(ctx, voice + midi_driver->basevoice);
 	 midi_voice[voice].note = -1;
 	 midi_voice[voice].time = _midi_tick;
 	 midi_channel[channel].note[note][layer] = -1; 
@@ -510,8 +511,9 @@ static INLINE void sort_out_pitch_bend(int *bend, int *note)
  *  intended to be called by the key_on() handlers in the MIDI driver, 
  *  and shouldn't be used by any other code.
  */
-int _midi_allocate_voice(int min, int max)
+int _midi_allocate_voice(KDR_MIDI_CTX *ctx, int min, int max)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int c;
    int layer;
    int voice = -1;
@@ -553,7 +555,7 @@ int _midi_allocate_voice(int min, int max)
 	 }
       }
       if (voice >= 0)
-	 midi_note_off(midi_voice[voice].channel, midi_voice[voice].note);
+	 midi_note_off(ctx, midi_voice[voice].channel, midi_voice[voice].note);
       else
 	 return -1;
    }
@@ -577,8 +579,9 @@ END_OF_FUNCTION(_midi_allocate_voice);
  *  and if it can't either cuts off an existing note, or if 'polite' is
  *  set, just stores the channel, note and volume in the waiting list.
  */
-static void midi_note_on(int channel, int note, int vol, int polite)
+static void midi_note_on(KDR_MIDI_CTX *ctx, int channel, int note, int vol, int polite)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int c, layer, inst, bend, corrected_note;
 
    /* it's easy if the driver can handle raw MIDI data */
@@ -586,16 +589,16 @@ static void midi_note_on(int channel, int note, int vol, int polite)
       if (channel != 9)
 	 note += patch_table[midi_channel[channel].patch].pitch;
 
-      midi_driver->raw_midi(0x90+channel);
-      midi_driver->raw_midi(note);
-      midi_driver->raw_midi(vol);
+      midi_driver->raw_midi(ctx, 0x90+channel);
+      midi_driver->raw_midi(ctx, note);
+      midi_driver->raw_midi(ctx, vol);
       return;
    }
 
    /* if the note is already on, turn it off */
    for (layer=0; layer<MIDI_LAYERS; layer++) {
       if (midi_channel[channel].note[note][layer] >= 0) {
-	 midi_note_off(channel, note);
+	 midi_note_off(ctx, channel, note);
 	 return;
       }
    }
@@ -643,7 +646,7 @@ static void midi_note_on(int channel, int note, int vol, int polite)
    midi_alloc_note = note;
    midi_alloc_vol = vol;
 
-   midi_driver->key_on(inst, corrected_note, bend, 
+   midi_driver->key_on(ctx, inst, corrected_note, bend, 
 		       sort_out_volume(channel, vol), 
 		       midi_channel[channel].pan);
 }
@@ -655,12 +658,14 @@ END_OF_STATIC_FUNCTION(midi_note_on);
 /* all_notes_off:
  *  Turns off all active notes.
  */
-static void all_notes_off(int channel)
+static void all_notes_off(KDR_MIDI_CTX *ctx, int channel)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    if (midi_driver->raw_midi) {
-      midi_driver->raw_midi(0xB0+channel);
-      midi_driver->raw_midi(123);
-      midi_driver->raw_midi(0);
+      midi_driver->raw_midi(ctx, 0xB0+channel);
+      midi_driver->raw_midi(ctx, 123);
+      midi_driver->raw_midi(ctx, 0);
       return;
    }
    else {
@@ -669,7 +674,7 @@ static void all_notes_off(int channel)
       for (note=0; note<128; note++)
 	 for (layer=0; layer<MIDI_LAYERS; layer++)
 	    if (midi_channel[channel].note[note][layer] >= 0)
-	       midi_note_off(channel, note);
+	       midi_note_off(ctx, channel, note);
    }
 }
 
@@ -680,12 +685,14 @@ END_OF_STATIC_FUNCTION(all_notes_off);
 /* all_sound_off:
  *  Turns off sound.
  */
-static void all_sound_off(int channel)
+static void all_sound_off(KDR_MIDI_CTX *ctx, int channel)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    if (midi_driver->raw_midi) {
-      midi_driver->raw_midi(0xB0+channel);
-      midi_driver->raw_midi(120);
-      midi_driver->raw_midi(0);
+      midi_driver->raw_midi(ctx, 0xB0+channel);
+      midi_driver->raw_midi(ctx, 120);
+      midi_driver->raw_midi(ctx, 0);
       return;
    }
 }
@@ -697,15 +704,17 @@ END_OF_STATIC_FUNCTION(all_sound_off);
 /* reset_controllers:
  *  Resets volume, pan, pitch bend, etc, to default positions.
  */
-static void reset_controllers(int channel)
+static void reset_controllers(KDR_MIDI_CTX *ctx, int channel)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    midi_channel[channel].new_volume = 128;
    midi_channel[channel].new_pitch_bend = 0x2000;
 
    if (midi_driver->raw_midi) {
-      midi_driver->raw_midi(0xB0+channel);
-      midi_driver->raw_midi(121);
-      midi_driver->raw_midi(0);
+      midi_driver->raw_midi(ctx, 0xB0+channel);
+      midi_driver->raw_midi(ctx, 121);
+      midi_driver->raw_midi(ctx, 0);
    }
 
    switch (channel % 3) {
@@ -715,9 +724,9 @@ static void reset_controllers(int channel)
    }
 
    if (midi_driver->raw_midi) {
-      midi_driver->raw_midi(0xB0+channel);
-      midi_driver->raw_midi(10);
-      midi_driver->raw_midi(midi_channel[channel].pan);
+      midi_driver->raw_midi(ctx, 0xB0+channel);
+      midi_driver->raw_midi(ctx, 10);
+      midi_driver->raw_midi(ctx, midi_channel[channel].pan);
    }
 }
 
@@ -728,8 +737,9 @@ END_OF_STATIC_FUNCTION(reset_controllers);
 /* update_controllers:
  *  Checks cached controller information and updates active voices.
  */
-static void update_controllers(void)
+static void update_controllers(KDR_MIDI_CTX *ctx)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int c, c2, vol, bend, note;
 
    for (c=0; c<16; c++) {
@@ -737,15 +747,15 @@ static void update_controllers(void)
       if ((midi_channel[c].volume != midi_channel[c].new_volume) || (old_midi_volume != _midi_volume)) {
 	 midi_channel[c].volume = midi_channel[c].new_volume;
 	 if (midi_driver->raw_midi) {
-	    midi_driver->raw_midi(0xB0+c);
-	    midi_driver->raw_midi(7);
-	    midi_driver->raw_midi(global_volume_fix(midi_channel[c].volume-1));
+	    midi_driver->raw_midi(ctx, 0xB0+c);
+	    midi_driver->raw_midi(ctx, 7);
+	    midi_driver->raw_midi(ctx, global_volume_fix(midi_channel[c].volume-1));
 	 }
 	 else {
 	    for (c2=0; c2<MIDI_VOICES; c2++) {
 	       if ((midi_voice[c2].channel == c) && (midi_voice[c2].note >= 0)) {
 		  vol = sort_out_volume(c, midi_voice[c2].volume);
-		  midi_driver->set_volume(c2 + midi_driver->basevoice, vol);
+		  midi_driver->set_volume(ctx, c2 + midi_driver->basevoice, vol);
 	       }
 	    }
 	 }
@@ -755,9 +765,9 @@ static void update_controllers(void)
       if (midi_channel[c].pitch_bend != midi_channel[c].new_pitch_bend) {
 	 midi_channel[c].pitch_bend = midi_channel[c].new_pitch_bend;
 	 if (midi_driver->raw_midi) {
-	    midi_driver->raw_midi(0xE0+c);
-	    midi_driver->raw_midi(midi_channel[c].pitch_bend & 0x7F);
-	    midi_driver->raw_midi(midi_channel[c].pitch_bend >> 7);
+	    midi_driver->raw_midi(ctx, 0xE0+c);
+	    midi_driver->raw_midi(ctx, midi_channel[c].pitch_bend & 0x7F);
+	    midi_driver->raw_midi(ctx, midi_channel[c].pitch_bend >> 7);
 	 }
 	 else {
 	    for (c2=0; c2<MIDI_VOICES; c2++) {
@@ -765,7 +775,7 @@ static void update_controllers(void)
 		  bend = midi_channel[c].pitch_bend;
 		  note = midi_voice[c2].note;
 		  sort_out_pitch_bend(&bend, &note);
-		  midi_driver->set_pitch(c2 + midi_driver->basevoice, note, bend);
+		  midi_driver->set_pitch(ctx, c2 + midi_driver->basevoice, note, bend);
 	       }
 	    }
 	 }
@@ -782,8 +792,10 @@ END_OF_STATIC_FUNCTION(update_controllers);
 /* process_controller:
  *  Deals with a MIDI controller message on the specified channel.
  */
-static void process_controller(int channel, int ctrl, int data)
+static void process_controller(KDR_MIDI_CTX *ctx, int channel, int ctrl, int data)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    switch (ctrl) {
 
       case 7:                                   /* main volume */
@@ -793,18 +805,18 @@ static void process_controller(int channel, int ctrl, int data)
       case 10:                                  /* pan */
 	 midi_channel[channel].pan = data;
 	 if (midi_driver->raw_midi) {
-	    midi_driver->raw_midi(0xB0+channel);
-	    midi_driver->raw_midi(10);
-	    midi_driver->raw_midi(data);
+	    midi_driver->raw_midi(ctx, 0xB0+channel);
+	    midi_driver->raw_midi(ctx, 10);
+	    midi_driver->raw_midi(ctx, data);
 	 }
 	 break;
 
       case 120:                                 /* all sound off */
-	 all_sound_off(channel);
+	 all_sound_off(ctx, channel);
 	 break;
 
       case 121:                                 /* reset all controllers */
-	 reset_controllers(channel);
+	 reset_controllers(ctx, channel);
 	 break;
 
       case 123:                                 /* all notes off */
@@ -812,14 +824,14 @@ static void process_controller(int channel, int ctrl, int data)
       case 125:                                 /* omni mode on */
       case 126:                                 /* poly mode off */
       case 127:                                 /* poly mode on */
-	 all_notes_off(channel);
+	 all_notes_off(ctx, channel);
 	 break;
 
       default:
 	 if (midi_driver->raw_midi) {
-	    midi_driver->raw_midi(0xB0+channel);
-	    midi_driver->raw_midi(ctrl);
-	    midi_driver->raw_midi(data);
+	    midi_driver->raw_midi(ctx, 0xB0+channel);
+	    midi_driver->raw_midi(ctx, ctrl);
+	    midi_driver->raw_midi(ctx, data);
 	 }
 	 break;
    }
@@ -863,8 +875,9 @@ END_OF_STATIC_FUNCTION(process_meta_event);
 /* process_midi_event:
  *  Processes the next MIDI event on the specified track.
  */
-static void process_midi_event(AL_CONST unsigned char **pos, unsigned char *running_status, long *timer)
+static void process_midi_event(KDR_MIDI_CTX *ctx, AL_CONST unsigned char **pos, unsigned char *running_status, long *timer)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    unsigned char byte1, byte2; 
    int channel;
    unsigned char event;
@@ -896,12 +909,12 @@ static void process_midi_event(AL_CONST unsigned char **pos, unsigned char *runn
    switch (event>>4) {
 
       case 0x08:                                /* note off */
-	 midi_note_off(channel, byte1);
+	 midi_note_off(ctx, channel, byte1);
 	 (*pos) += 2;
 	 break;
 
       case 0x09:                                /* note on */
-	 midi_note_on(channel, byte1, byte2, 1);
+	 midi_note_on(ctx, channel, byte1, byte2, 1);
 	 (*pos) += 2;
 	 break;
 
@@ -910,14 +923,14 @@ static void process_midi_event(AL_CONST unsigned char **pos, unsigned char *runn
 	 break;
 
       case 0x0B:                                /* control change */
-	 process_controller(channel, byte1, byte2);
+	 process_controller(ctx, channel, byte1, byte2);
 	 (*pos) += 2;
 	 break;
 
       case 0x0C:                                /* program change */
 	 midi_channel[channel].patch = byte1;
 	 if (midi_driver->raw_midi)
-	    raw_program_change(channel, byte1);
+	    raw_program_change(ctx, channel, byte1);
 	 (*pos) += 1;
 	 break;
 
@@ -1007,7 +1020,7 @@ static void midi_player(KDR_MIDI_CTX *ctx)
 
 	 /* while events are waiting, process them */
 	 while (midi_track[c].timer <= 0) { 
-	    process_midi_event((AL_CONST unsigned char**) &midi_track[c].pos, 
+	    process_midi_event(ctx, (AL_CONST unsigned char**) &midi_track[c].pos, 
 			       &midi_track[c].running_status,
 			       &midi_track[c].timer); 
 
@@ -1073,10 +1086,10 @@ static void midi_player(KDR_MIDI_CTX *ctx)
 	 }
 	 else {
 	    for (c=0; c<16; c++) {
-	       all_notes_off(c);
-	       all_sound_off(c);
+	       all_notes_off(ctx, c);
+	       all_sound_off(ctx, c);
 	    }
-	    prepare_to_play(midifile);
+	    prepare_to_play(ctx, midifile);
 	    goto do_it_all_again;
 	 }
       }
@@ -1096,12 +1109,12 @@ static void midi_player(KDR_MIDI_CTX *ctx)
 
    /* controller changes are cached and only processed here, so we can 
       condense streams of controller data into just a few voice updates */ 
-   update_controllers();
+   update_controllers(ctx);
 
    /* and deal with any notes that are still waiting to be played */
    for (c=0; c<MIDI_VOICES; c++)
       if (midi_waiting[c].note >= 0)
-	 midi_note_on(midi_waiting[c].channel, midi_waiting[c].note,
+	 midi_note_on(ctx, midi_waiting[c].channel, midi_waiting[c].note,
 		      midi_waiting[c].volume, 0);
 
    midi_semaphore = FALSE;
@@ -1171,8 +1184,10 @@ static int midi_init(void)
  *  them to the soundcard driver so it can load whatever samples are
  *  neccessary.
  */
-static int load_patches(MIDI *midi)
+static int load_patches(KDR_MIDI_CTX *ctx, MIDI *midi)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    char patches[128], drums[128];
    unsigned char *p, *end;
    unsigned char running_status, event;
@@ -1268,7 +1283,7 @@ static int load_patches(MIDI *midi)
    }
 
    /* tell the driver to do its stuff */ 
-   return midi_driver->load_patches(patches, drums);
+   return midi_driver->load_patches(ctx, patches, drums);
 }
 
 
@@ -1276,15 +1291,17 @@ static int load_patches(MIDI *midi)
 /* prepare_to_play:
  *  Sets up all the global variables needed to play the specified file.
  */
-static void prepare_to_play(MIDI *midi)
+static void prepare_to_play(KDR_MIDI_CTX *ctx, MIDI *midi)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
+   
    int c;
    ASSERT(midi);
 
    for (c=0; c<16; c++)
-      reset_controllers(c);
+      reset_controllers(ctx, c);
 
-   update_controllers();
+   update_controllers(ctx);
 
    midifile = midi;
    midi_pos = 0;
@@ -1301,7 +1318,7 @@ static void prepare_to_play(MIDI *midi)
    for (c=0; c<16; c++) {
       midi_channel[c].patch = 0;
       if (midi_driver->raw_midi)
-	 raw_program_change(c, 0);
+	 raw_program_change(ctx, c, 0);
    }
 
    for (c=0; c<MIDI_TRACKS; c++) {
@@ -1338,20 +1355,20 @@ int play_midi(KDR_MIDI_CTX *ctx, MIDI *midi, int loop)
    remove_int(ctx, midi_player);
 
    for (c=0; c<16; c++) {
-      all_notes_off(c);
-      all_sound_off(c);
+      all_notes_off(ctx, c);
+      all_sound_off(ctx, c);
    }
 
    if (midi) {
       if (!midi_loaded_patches)
-	 if (load_patches(midi) != 0)
+	 if (load_patches(ctx, midi) != 0)
 	    return -1;
 
       midi_loop = loop;
       midi_loop_start = -1;
       midi_loop_end = -1;
 
-      prepare_to_play(midi);
+      prepare_to_play(ctx, midi);
 
       /* arbitrary speed, midi_player() will adjust it */
       install_int(ctx, midi_player, 20);
@@ -1415,8 +1432,8 @@ void midi_pause(KDR_MIDI_CTX *ctx)
    remove_int(ctx, midi_player);
 
    for (c=0; c<16; c++) {
-      all_notes_off(c);
-      all_sound_off(c);
+      all_notes_off(ctx, c);
+      all_sound_off(ctx, c);
    }
 }
 
@@ -1472,8 +1489,8 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
    }
 
    /* save some variables and give temporary values */
-   old_driver = midi_driver;
-   midi_driver = &_midi_none;
+   old_driver = ctx->midi_driver;
+   ctx->midi_driver = &_midi_none;
    old_midi_loop = midi_loop;
    midi_loop = 0;
    old_midifile = midifile;
@@ -1483,7 +1500,7 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
 
    /* are we seeking backwards? If so, skip back to the start of the file */
    if (target <= midi_pos)
-      prepare_to_play(midifile);
+      prepare_to_play(ctx, midifile);
 
    /* now sit back and let midi_player get to the position */
    while ((midi_pos < target) && (midi_pos >= 0)) {
@@ -1504,30 +1521,30 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
 
    /* restore previously saved variables */
    midi_loop = old_midi_loop;
-   midi_driver = old_driver;
+   ctx->midi_driver = old_driver;
    midi_seeking = 0;
 
    if (midi_pos >= 0) {
       /* refresh the driver with any changed parameters */
-      if (midi_driver->raw_midi) {
+      if (ctx->midi_driver->raw_midi) {
 	 for (c=0; c<16; c++) {
 	    /* program change (this sets the volume as well) */
 	    if ((midi_channel[c].patch != old_patch[c]) ||
 		(midi_channel[c].volume != old_volume[c]))
-	       raw_program_change(c, midi_channel[c].patch);
+	       raw_program_change(ctx, c, midi_channel[c].patch);
 
 	    /* pan */
 	    if (midi_channel[c].pan != old_pan[c]) {
-	       midi_driver->raw_midi(0xB0+c);
-	       midi_driver->raw_midi(10);
-	       midi_driver->raw_midi(midi_channel[c].pan);
+	       ctx->midi_driver->raw_midi(ctx, 0xB0+c);
+	       ctx->midi_driver->raw_midi(ctx, 10);
+	       ctx->midi_driver->raw_midi(ctx, midi_channel[c].pan);
 	    }
 
 	    /* pitch bend */
 	    if (midi_channel[c].pitch_bend != old_pitch_bend[c]) {
-	       midi_driver->raw_midi(0xE0+c);
-	       midi_driver->raw_midi(midi_channel[c].pitch_bend & 0x7F);
-	       midi_driver->raw_midi(midi_channel[c].pitch_bend >> 7);
+	       ctx->midi_driver->raw_midi(ctx, 0xE0+c);
+	       ctx->midi_driver->raw_midi(ctx, midi_channel[c].pitch_bend & 0x7F);
+	       ctx->midi_driver->raw_midi(ctx, midi_channel[c].pitch_bend >> 7);
 	    }
 	 }
       }
@@ -1540,7 +1557,7 @@ int midi_seek(KDR_MIDI_CTX *ctx, int target)
    }
 
    if ((midi_loop) && (!midi_looping)) {  /* was file looped? */
-      prepare_to_play(old_midifile);
+      prepare_to_play(ctx, old_midifile);
       install_int(ctx, midi_player, 20);
       return 2;                           /* seek past EOF => file restarted */
    }
@@ -1570,7 +1587,7 @@ int get_midi_length(KDR_MIDI_CTX *ctx, MIDI *midi)
 /* midi_out:
  *  Inserts MIDI command bytes into the output stream, in realtime.
  */
-void midi_out(unsigned char *data, int length)
+void midi_out(KDR_MIDI_CTX *ctx, unsigned char *data, int length)
 {
    unsigned char *pos = data;
    unsigned char running_status = 0;
@@ -1581,9 +1598,9 @@ void midi_out(unsigned char *data, int length)
    _midi_tick++;
 
    while (pos < data+length)
-      process_midi_event((AL_CONST unsigned char**) &pos, &running_status, &timer);
+      process_midi_event(ctx, (AL_CONST unsigned char**) &pos, &running_status, &timer);
 
-   update_controllers();
+   update_controllers(ctx);
 
    midi_semaphore = FALSE;
 }
@@ -1593,7 +1610,7 @@ void midi_out(unsigned char *data, int length)
 /* load_midi_patches:
  *  Tells the MIDI driver to preload the entire sample set.
  */
-int load_midi_patches(void)
+int load_midi_patches(KDR_MIDI_CTX *ctx)
 {
    char patches[128], drums[128];
    int c, ret;
@@ -1602,7 +1619,7 @@ int load_midi_patches(void)
       patches[c] = drums[c] = TRUE;
 
    midi_semaphore = TRUE;
-   ret = midi_driver->load_patches(patches, drums);
+   ret = ctx->midi_driver->load_patches(ctx, patches, drums);
    midi_semaphore = FALSE;
 
    midi_loaded_patches = TRUE;
@@ -1671,7 +1688,7 @@ void kdr_install_driver(KDR_MIDI_CTX *ctx, KDR_MIDI_DRIVER *drv)
 {
 	memset(ctx, 0, sizeof(*ctx));
 	
-	midi_driver = drv;
+	ctx->midi_driver = drv;
 	midi_card = drv->id;
-	midi_driver->init(0, midi_driver->voices);
+	ctx->midi_driver->init(ctx, 0, ctx->midi_driver->voices);
 }

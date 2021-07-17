@@ -37,19 +37,17 @@
 #define MIDI_OPL3   KDR_MIDI_OPL3   //         AL_ID('O','P','L','3')
 
 /* external interface to the Adlib driver */
-static int fm_detect(int input);
-static int fm_init(int input, int voices);
-static void fm_exit(int input);
-static int fm_set_mixer_volume(int volume);
-static int fm_load_patches(AL_CONST char *patches, AL_CONST char *drums);
-static void fm_key_on(int inst, int note, int bend, int vol, int pan);
-static void fm_key_off(int voice);
-static void fm_set_volume(int voice, int vol);
-static void fm_set_pitch(int voice, int note, int bend);
+static int fm_detect(struct KDR_MIDI_CTX *ctx, int input);
+static int fm_init(struct KDR_MIDI_CTX *ctx, int input, int voices);
+static void fm_exit(struct KDR_MIDI_CTX *ctx, int input);
+static int fm_set_mixer_volume(struct KDR_MIDI_CTX *ctx, int volume);
+static int fm_load_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums);
+static void fm_key_on(struct KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan);
+static void fm_key_off(struct KDR_MIDI_CTX *ctx, int voice);
+static void fm_set_volume(struct KDR_MIDI_CTX *ctx, int voice, int vol);
+static void fm_set_pitch(struct KDR_MIDI_CTX *ctx, int voice, int note, int bend);
 
 static char adlib_desc[256] = EMPTY_STRING;
-
-//MIDI_DRIVER *midi_driver;
 
 /*
    .id               =                
@@ -276,9 +274,10 @@ END_OF_STATIC_FUNCTION(fm_write);
  *  Resets the FM chip. If enable is set, puts OPL3 cards into OPL3 mode,
  *  otherwise puts them into OPL2 emulation mode.
  */
-static void fm_reset(int enable)
+static void fm_reset(struct KDR_MIDI_CTX *ctx, int enable)
 {
    int i;
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
 
    for (i=0xF5; i>0; i--)
       fm_write(i, 0);
@@ -346,8 +345,9 @@ END_OF_STATIC_FUNCTION(fm_reset);
 /* fm_set_drum_mode:
  *  Switches the OPL synth between normal and percussion modes.
  */
-static void fm_set_drum_mode(int usedrums)
+static void fm_set_drum_mode(struct KDR_MIDI_CTX *ctx, int usedrums)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    int i;
 
    fm_drum_mode = usedrums;
@@ -465,13 +465,13 @@ static INLINE void fm_set_drum_pitch(int voice, FM_INSTRUMENT *drum)
 /* fm_trigger_drum:
  *  Triggers a note on a drum channel.
  */
-static INLINE void fm_trigger_drum(int inst, int vol)
+static INLINE void fm_trigger_drum(KDR_MIDI_CTX *ctx, int inst, int vol)
 {
    FM_INSTRUMENT *drum = fm_drum+inst;
    int d;
 
    if (!fm_drum_mode)
-      fm_set_drum_mode(TRUE);
+      fm_set_drum_mode(ctx, TRUE);
 
    if (drum->type == FM_BD)
       d = 0;
@@ -535,9 +535,10 @@ static INLINE void fm_trigger_drum(int inst, int vol)
  *  Drum sounds are indicated by passing an instrument number greater than
  *  128, in which case the sound is GM percussion key #(inst-128).
  */
-static void fm_key_on(int inst, int note, int bend, int vol, int pan)
+static void fm_key_on(KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan)
 {
    int voice;
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
 
    if (inst > 127) {                               /* drum sound? */
       inst -= 163;
@@ -546,19 +547,19 @@ static void fm_key_on(int inst, int note, int bend, int vol, int pan)
       else if (inst > 46)
 	 inst = 46;
 
-      fm_trigger_drum(inst, vol);
+      fm_trigger_drum(ctx, inst, vol);
    }
    else {                                          /* regular instrument */
       if (midi_card == MIDI_2XOPL2) {
 	 /* the SB Pro-1 has fixed pan positions per voice... */
 	 if (pan < 64)
-	    voice = _midi_allocate_voice(0, 5);
+	    voice = _midi_allocate_voice(ctx, 0, 5);
 	 else
-	    voice = _midi_allocate_voice(9, midi_driver->voices-1);
+	    voice = _midi_allocate_voice(ctx, 9, midi_driver->voices-1);
       }
       else
 	 /* on other cards we can use any voices */
-	 voice = _midi_allocate_voice(-1, -1);
+	 voice = _midi_allocate_voice(ctx, -1, -1);
 
       if (voice < 0)
 	 return;
@@ -587,8 +588,8 @@ static void fm_key_on(int inst, int note, int bend, int vol, int pan)
       }
 
       /* and play the note */
-      fm_set_pitch(voice, note, bend);
-      fm_set_volume(voice, vol);
+      fm_set_pitch(ctx, voice, note, bend);
+      fm_set_volume(ctx, voice, vol);
    }
 }
 
@@ -599,7 +600,7 @@ END_OF_STATIC_FUNCTION(fm_key_on);
 /* fm_key_off:
  *  Hey, guess what this does :-)
  */
-static void fm_key_off(int voice)
+static void fm_key_off(KDR_MIDI_CTX *ctx, int voice)
 {
    fm_write(0xB0+VOICE_OFFSET(voice), fm_key[voice] & 0xDF);
 }
@@ -611,8 +612,9 @@ END_OF_STATIC_FUNCTION(fm_key_off);
 /* fm_set_volume:
  *  Sets the volume of the specified voice (vol range 0-127).
  */
-static void fm_set_volume(int voice, int vol)
+static void fm_set_volume(KDR_MIDI_CTX *ctx, int voice, int vol)
 {
+   KDR_MIDI_DRIVER *midi_driver = ctx->midi_driver;
    if(voice < 0 || voice >= midi_driver->voices) return;
    vol = fm_level[voice] * fm_vol_table[vol] / 128;
    fm_write(0x43+fm_offset[voice], (63-vol) | fm_keyscale[voice]);
@@ -627,7 +629,7 @@ END_OF_STATIC_FUNCTION(fm_set_volume);
 /* fm_set_pitch:
  *  Sets the pitch of the specified voice.
  */
-static void fm_set_pitch(int voice, int note, int bend)
+static void fm_set_pitch(KDR_MIDI_CTX *ctx, int voice, int note, int bend)
 {
    int oct = 1;
    int freq;
@@ -656,7 +658,7 @@ END_OF_STATIC_FUNCTION(fm_set_pitch);
  *  Called before starting to play a MIDI file, to check if we need to be
  *  in rhythm mode or not.
  */
-static int fm_load_patches(AL_CONST char *patches, AL_CONST char *drums)
+static int fm_load_patches(KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums)
 {
    int i;
    int usedrums = FALSE;
@@ -686,7 +688,7 @@ static int fm_load_patches(AL_CONST char *patches, AL_CONST char *drums)
       }
    }
 
-   fm_set_drum_mode(usedrums);
+   fm_set_drum_mode(ctx, usedrums);
 
    return 0;
 }
@@ -699,7 +701,7 @@ END_OF_STATIC_FUNCTION(fm_load_patches);
  *  For SB-Pro cards, sets the mixer volume for FM output.
  */
 //SHOULDN'T NORMALLY BE CALLED
-static int fm_set_mixer_volume(int volume)
+static int fm_set_mixer_volume(KDR_MIDI_CTX *ctx, int volume)
 {
    //return _sb_set_mixer(-1, volume);
    return 0;
@@ -744,79 +746,8 @@ static int fm_is_there(void)
  *  Adlib detection routine.
  */
 //SHOULDN'T NORMALLY BE CALLED
-static int fm_detect(int input)
+static int fm_detect(KDR_MIDI_CTX *ctx, int input)
 {
-	#if 0
-   static int ports[] = { 0x210, 0x220, 0x230, 0x240, 0x250, 0x260, 0x388, 0 };
-   char tmp1[64], tmp2[64];
-   int opl_type;
-   AL_CONST char *s;
-   int i;
-
-   if (input)
-      return FALSE;
-
-   //_fm_port = get_config_hex(uconvert_ascii("sound", tmp1), uconvert_ascii("fm_port", tmp2), -1);
-
-   if (_fm_port < 0) {
-      if (midi_card == MIDI_OPL2) {
-	 _fm_port = 0x388;
-	 if (fm_is_there())
-	    goto found_it;
-      }
-
-      for (i=0; ports[i]; i++) {          /* find the card */
-	 _fm_port = ports[i];
-	 if (fm_is_there())
-	    goto found_it;
-      }
-   }
-
-   if (!fm_is_there()) {
-      ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("OPL synth not found"));
-      return FALSE;
-   }
-
-   found_it:
-
-   //if ((inportb(_fm_port) & 6) == 0) {    /* check for OPL3 */
-   if(1){
-      opl_type = MIDI_OPL3;
-      //_sb_read_dsp_version();
-   }
-   else {                                 /* check for second OPL2 */
-      //if (_sb_read_dsp_version() >= 0x300)
-	  if(1)
-	 opl_type = MIDI_2XOPL2;
-      else
-	 opl_type = MIDI_OPL2;
-   }
-
-   if (midi_card == MIDI_OPL3) {
-      if (opl_type != MIDI_OPL3) {
-	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("OPL3 synth not found"));
-	 return FALSE;
-      }
-   }
-   else if (midi_card == MIDI_2XOPL2) {
-      if (opl_type != MIDI_2XOPL2) {
-	 ustrzcpy(allegro_error, ALLEGRO_ERROR_SIZE, ("Second OPL2 synth not found"));
-	 return FALSE;
-      }
-   }
-   else if (midi_card != MIDI_OPL2)
-      midi_card = opl_type;
-
-   if (midi_card == MIDI_OPL2)
-      s = ("OPL2 synth");
-   else if (midi_card == MIDI_2XOPL2)
-      s = ("Dual OPL2 synths");
-   else
-      s = ("OPL3 synth");
-
-   uszprintf(adlib_desc, sizeof(adlib_desc), ("%s on port %X"), s, _fm_port);
-   midi_driver->desc = adlib_desc;
-   #endif
    return TRUE;
 }
 
@@ -916,13 +847,13 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, AL_CONST char *filename, int drums)
 /* fm_init:
  *  Setup the adlib driver.
  */
-static int fm_init(int input, int voices)
+static int fm_init(KDR_MIDI_CTX *ctx, int input, int voices)
 {
    char tmp1[128], tmp2[128];
    AL_CONST char *s;
    int i;
 
-   fm_reset(1);
+   fm_reset(ctx, 1);
 
    #if 0
    for (i=0; i<2; i++) {
@@ -979,7 +910,7 @@ static int fm_init(int input, int voices)
 /* fm_exit:
  *  Cleanup when we are finished.
  */
-static void fm_exit(int input)
+static void fm_exit(KDR_MIDI_CTX *ctx, int input)
 {
-   fm_reset(0);
+   fm_reset(ctx, 0);
 }

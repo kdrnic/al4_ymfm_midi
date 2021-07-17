@@ -45,6 +45,8 @@ typedef struct KDR_MIDI                    /* a midi file */
    } track[KDR_MIDI_TRACKS];
 } KDR_MIDI;
 
+struct KDR_MIDI_CTX;
+
 typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
 {
 	int  id;                            /* driver ID code */
@@ -58,26 +60,26 @@ typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
 	int  xmin, xmax;                    /* reserved voice range */
 	
 	/* setup routines */
-	KDR_AL_METHOD(int,  detect, (int input));
-	KDR_AL_METHOD(int,  init, (int input, int voices));
-	KDR_AL_METHOD(void, exit, (int input));
-	KDR_AL_METHOD(int,  set_mixer_volume, (int volume));
-	KDR_AL_METHOD(int,  get_mixer_volume, (void));
+	KDR_AL_METHOD(int,  detect, (struct KDR_MIDI_CTX *ctx, int input));
+	KDR_AL_METHOD(int,  init, (struct KDR_MIDI_CTX *ctx, int input, int voices));
+	KDR_AL_METHOD(void, exit, (struct KDR_MIDI_CTX *ctx, int input));
+	KDR_AL_METHOD(int,  set_mixer_volume, (struct KDR_MIDI_CTX *ctx, int volume));
+	KDR_AL_METHOD(int,  get_mixer_volume, (struct KDR_MIDI_CTX *ctx));
 	
 	/* raw MIDI output to MPU-401, etc. */
-	KDR_AL_METHOD(void, raw_midi, (int data));
+	KDR_AL_METHOD(void, raw_midi, (struct KDR_MIDI_CTX *ctx, int data));
 	
 	/* dynamic patch loading routines */
-	KDR_AL_METHOD(int,  load_patches, (KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
-	KDR_AL_METHOD(void, adjust_patches, (KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
+	KDR_AL_METHOD(int,  load_patches, (struct KDR_MIDI_CTX *ctx, KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
+	KDR_AL_METHOD(void, adjust_patches, (struct KDR_MIDI_CTX *ctx, KDR_AL_CONST char *patches, KDR_AL_CONST char *drums));
 	
 	/* note control functions */
-	KDR_AL_METHOD(void, key_on, (int inst, int note, int bend, int vol, int pan));
-	KDR_AL_METHOD(void, key_off, (int voice));
-	KDR_AL_METHOD(void, set_volume, (int voice, int vol));
-	KDR_AL_METHOD(void, set_pitch, (int voice, int note, int bend));
-	KDR_AL_METHOD(void, set_pan, (int voice, int pan));
-	KDR_AL_METHOD(void, set_vibrato, (int voice, int amount));
+	KDR_AL_METHOD(void, key_on, (struct KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan));
+	KDR_AL_METHOD(void, key_off, (struct KDR_MIDI_CTX *ctx, int voice));
+	KDR_AL_METHOD(void, set_volume, (struct KDR_MIDI_CTX *ctx, int voice, int vol));
+	KDR_AL_METHOD(void, set_pitch, (struct KDR_MIDI_CTX *ctx, int voice, int note, int bend));
+	KDR_AL_METHOD(void, set_pan, (struct KDR_MIDI_CTX *ctx, int voice, int pan));
+	KDR_AL_METHOD(void, set_vibrato, (struct KDR_MIDI_CTX *ctx, int voice, int amount));
 } KDR_MIDI_DRIVER;
 
 typedef long long int KDR_LARGE_INT;
@@ -177,7 +179,7 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define MIDI_NONE             0
 	#define MIDI_DIGMID           AL_ID('D','I','G','I')
 	
-	#define midi_driver             kdr_midi_driver
+//	#define midi_driver             kdr_midi_driver
 	#define midi_card               kdr_midi_card
 	#define midi_pos                kdr_midi_pos
 	#define midi_time               kdr_midi_time
@@ -215,25 +217,23 @@ int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 	#define _dummy_noop3            kdr_dummy_noop3
 	#define midi_player             kdr_midi_player
 	
-	AL_VAR(MIDI_DRIVER *, midi_driver);
+//	AL_VAR(MIDI_DRIVER *, midi_driver);
 	AL_VAR(int, midi_card);
-	AL_FUNC(int, _midi_allocate_voice, (int min, int max));
+	AL_FUNC(int, _midi_allocate_voice, (KDR_MIDI_CTX *ctx, int min, int max));
 	AL_VAR(volatile long, _midi_tick);
-	AL_FUNC(void, _dummy_noop2, (int p1, int p2));
-	AL_FUNC(void, _dummy_adjust_patches, (AL_CONST char *patches, AL_CONST char *drums));
 	
-	int  _dummy_detect(int input) ;
-	int  _dummy_init(int input, int voices) ;
-	void _dummy_exit(int input) ;
-	int  _dummy_set_mixer_volume(int volume) ;
-	int  _dummy_get_mixer_volume(void) ;
-	void _dummy_noop1(int p) ;
-	void _dummy_noop2(int p1, int p2) ;
-	void _dummy_noop3(int p1, int p2, int p3) ;
-	void _dummy_raw_midi(int data) ;
-	int  _dummy_load_patches(AL_CONST char *patches, AL_CONST char *drums) ;
-	void _dummy_adjust_patches(AL_CONST char *patches, AL_CONST char *drums) ;
-	void _dummy_key_on(int inst, int note, int bend, int vol, int pan) ;
+	int  _dummy_detect(struct KDR_MIDI_CTX *ctx, int input) ;
+	int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices) ;
+	void _dummy_exit(struct KDR_MIDI_CTX *ctx, int input) ;
+	int  _dummy_set_mixer_volume(struct KDR_MIDI_CTX *ctx, int volume) ;
+	int  _dummy_get_mixer_volume(struct KDR_MIDI_CTX *ctx) ;
+	void _dummy_noop1(struct KDR_MIDI_CTX *ctx, int p) ;
+	void _dummy_noop2(struct KDR_MIDI_CTX *ctx, int p1, int p2) ;
+	void _dummy_noop3(struct KDR_MIDI_CTX *ctx, int p1, int p2, int p3) ;
+	void _dummy_raw_midi(struct KDR_MIDI_CTX *ctx, int data) ;
+	int  _dummy_load_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums) ;
+	void _dummy_adjust_patches(struct KDR_MIDI_CTX *ctx, AL_CONST char *patches, AL_CONST char *drums) ;
+	void _dummy_key_on(struct KDR_MIDI_CTX *ctx, int inst, int note, int bend, int vol, int pan) ;
 
 	#endif
 #endif
@@ -251,8 +251,8 @@ KDR_AL_FUNC(void,         kdr_midi_pause, (KDR_MIDI_CTX *ctx));
 KDR_AL_FUNC(void,         kdr_midi_resume, (KDR_MIDI_CTX *ctx));
 KDR_AL_FUNC(int,          kdr_midi_seek, (KDR_MIDI_CTX *ctx, int target));
 KDR_AL_FUNC(int,          kdr_get_midi_length, (KDR_MIDI_CTX *ctx, KDR_MIDI *midi));
-KDR_AL_FUNC(void,         kdr_midi_out, (unsigned char *data, int length));
-KDR_AL_FUNC(int,          kdr_load_midi_patches, (void));
+KDR_AL_FUNC(void,         kdr_midi_out, (KDR_MIDI_CTX *ctx, unsigned char *data, int length));
+KDR_AL_FUNC(int,          kdr_load_midi_patches, (KDR_MIDI_CTX *ctx));
 KDR_AL_FUNCPTR(void,      kdr_midi_msg_callback, (int msg, int byte1, int byte2));
 KDR_AL_FUNCPTR(void,      kdr_midi_meta_callback, (int type, KDR_AL_CONST unsigned char *data, int length));
 KDR_AL_FUNCPTR(void,      kdr_midi_sysex_callback, (KDR_AL_CONST unsigned char *data, int length));
