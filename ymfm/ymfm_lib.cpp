@@ -300,68 +300,92 @@ void operator delete(void* p, unsigned long i)
 #define __STDC_FORMAT_MACROS 
 #include <inttypes.h>
 
-static unsigned int output_rate, chip_rate;
-static vgm_chip_base *chip;
-static int stereo;
-static std::vector<float> f_buffer[2];
-static void *resampler[2];
-emulated_time output_pos = 0;
-
-FILE *reg_log = 0;
-
-void ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
+struct ymfmlib_data
 {
-	stereo = stereo_;
-	output_rate = output_rate_;
-	chip = new vgm_chip<ymfm::ymf262>(clock, CHIP_YMF262, "YMF262");
-	chip_rate = chip->sample_rate();
+	unsigned int output_rate, chip_rate;
+	vgm_chip_base *chip;
+	int stereo;
+	std::vector<float> f_buffer[2];
+	void *resampler[2];
+	emulated_time output_pos;
+	FILE *reg_log;
+	float *out_f_buffer;
+	int u16buffer2_siz;
+	uint16_t *u16buffer2;
+};
+
+void *ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
+{
+	ymfmlib_data d = {}, *dptr;
+	d.stereo = stereo_;
+	d.output_rate = output_rate_;
+	d.chip = new vgm_chip<ymfm::ymf262>(clock, CHIP_YMF262, "YMF262");
+	d.chip_rate = d.chip->sample_rate();
 	
 	#if YMFMLIB_USE_LIBRESAMPLE
 	//Initialize resamplers (one for each channel)
-	resampler[0] = resample_open(
+	d.resampler[0] = resample_open(
 		1,                                   //highQuality
-		double(44100/5) / double(chip_rate), //minFactor
-		double(48000) / double(chip_rate)    //maxFactor
+		double(44100/5) / double(d.chip_rate), //minFactor
+		double(48000) / double(d.chip_rate)    //maxFactor
 	);
-	resampler[1] = resample_dup(resampler[0]);
+	if(d.stereo){
+		d.resampler[1] = resample_dup(d.resampler[0]);
+	}
 	#endif
 	
-	//reg_log = fopen("regw.log", "w");
+	d.output_pos = 0;
+	d.reg_log = 0;
+	
+	dptr = (ymfmlib_data *) malloc(sizeof(d));
+	*dptr = d;
+	return dptr;
 }
 
-void ymfm_write(int reg, unsigned char data)
+void ymfm_destroy(void *dv)
 {
-	if(reg_log) fprintf(reg_log, "%" PRId64 " %d %u\n", output_pos, reg, data);
-	chip->write(reg, data);
+	//TODO
 }
 
-void ymfm_generate(void *buffer, int num_samples)
+void ymfm_openlog(void *dv, const char *fn)
 {
-	emulated_time output_step = 0x100000000ull / chip_rate;
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	d->reg_log = fopen(fn, "w");
+}
+
+void ymfm_write(void *dv, int reg, unsigned char data)
+{
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	if(d->reg_log) fprintf(d->reg_log, "%" PRId64 " %d %u\n", d->output_pos, reg, data);
+	d->chip->write(reg, data);
+}
+
+void ymfm_generate(void *dv, void *buffer, int num_samples)
+{
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	emulated_time output_step = 0x100000000ull / d->chip_rate;
 	
 	//Number of samples to generate from OPL (not counting stereo)
-	int num_samples2 = (num_samples * chip_rate) / output_rate;
+	int num_samples2 = (num_samples * d->chip_rate) / d->output_rate;
 	
 	//u16buffer will hold output samples,
 	//u16buffer2 will hold generated samples if not using libresample
-	static int u16buffer2_siz = 0;
-	static uint16_t *u16buffer2 = 0;
 	uint16_t *u16buffer = (uint16_t *) buffer;
 	//Reallocate if small
-	if(u16buffer2_siz < num_samples2 * 2){
-		u16buffer2_siz = num_samples2 * 2;
-		u16buffer2 = (uint16_t *) realloc((void *) u16buffer2, sizeof(*u16buffer2) * u16buffer2_siz);
+	if(d->u16buffer2_siz < num_samples2 * 2){
+		d->u16buffer2_siz = num_samples2 * 2;
+		d->u16buffer2 = (uint16_t *) realloc((void *) d->u16buffer2, sizeof(*d->u16buffer2) * d->u16buffer2_siz);
 	}
 	
 	for(int i = 0; i < num_samples2; i++){
 		int32_t outputs[2] = {0};
-		chip->generate(output_pos, output_step, outputs);
-		output_pos += output_step;
+		d->chip->generate(d->output_pos, output_step, outputs);
+		d->output_pos += output_step;
 		
 		#ifdef YMFMLIB_USE_LIBRESAMPLE
 		//Convert samples to float and add to resampling buffer
-		           f_buffer[0].push_back(float(outputs[0]) / float(1 << 15));
-		if(stereo) f_buffer[1].push_back(float(outputs[1]) / float(1 << 15));
+		              d->f_buffer[0].push_back(float(outputs[0]) / float(1 << 15));
+		if(d->stereo) d->f_buffer[1].push_back(float(outputs[1]) / float(1 << 15));
 		#endif
 		
 		//Convert samples to unsigned and clip
@@ -370,51 +394,50 @@ void ymfm_generate(void *buffer, int num_samples)
 		outputs[1] += 32768;
 		outputs[1] &= 0xFFFF;
 		
-		u16buffer2[i*2+0] = outputs[0];
-		u16buffer2[i*2+1] = outputs[1];
+		d->u16buffer2[i*2+0] = outputs[0];
+		d->u16buffer2[i*2+1] = outputs[1];
 	}
 	
 	//Perform resampling
 	#if YMFMLIB_USE_LIBRESAMPLE
 	//Use libresample to downsample each channel separately
-	static float *out_f_buffer = 0;
-	if(!out_f_buffer){
-		out_f_buffer = (float *) malloc(sizeof(*out_f_buffer) * (num_samples));
+	if(!d->out_f_buffer){
+		d->out_f_buffer = (float *) malloc(sizeof(*d->out_f_buffer) * (num_samples));
 	}
-	for(int i = 0; i < (stereo + 1); i++){
+	for(int i = 0; i < (d->stereo + 1); i++){
 		int in_used = 0;
 		int out_used = resample_process(
-						resampler[i],                              //handle
-						(double) output_rate / (double) chip_rate, //factor
-						&f_buffer[i][0],                           //inBuffer
-						num_samples2,                              //inBufferLen
-						0,                                         //lastFlag
-						&in_used,                                  //inUsed
-						out_f_buffer,                              //outBuffer
-						num_samples                                //outBufferLen
+						d->resampler[i],                                 //handle
+						(double) d->output_rate / (double) d->chip_rate, //factor
+						&d->f_buffer[i][0],                              //inBuffer
+						num_samples2,                                    //inBufferLen
+						0,                                               //lastFlag
+						&in_used,                                        //inUsed
+						d->out_f_buffer,                                 //outBuffer
+						num_samples                                      //outBufferLen
 		);
 		//Pad out_f_buffer
 		for(int j = out_used; j < num_samples; j++){
-			out_f_buffer[j] = out_f_buffer[out_used - 1];
+			d->out_f_buffer[j] = d->out_f_buffer[out_used - 1];
 		}
 		//Convert back to u16
 		for(int j = 0; j < num_samples; j++){
-			u16buffer[j*(stereo+1)+i] = (out_f_buffer[j] + 0.5) * 32768;
+			u16buffer[j*(d->stereo+1)+i] = (d->out_f_buffer[j] + 0.5) * 32768;
 		}
 		//Remove used samples
-		f_buffer[i].erase(f_buffer[i].begin(), f_buffer[i].begin() + in_used);
+		d->f_buffer[i].erase(d->f_buffer[i].begin(), d->f_buffer[i].begin() + in_used);
 	}
 	#else
 	//Pointless aliased "downsampler"
 	for(int i = 0; i < num_samples; i++){
 		int pos = (i * num_samples2) / num_samples;
 		
-		if(stereo){
-			u16buffer[i*2+0] = u16buffer2[pos*2+0];
-			u16buffer[i*2+1] = u16buffer2[pos*2+1];
+		if(d->stereo){
+			u16buffer[i*2+0] = d->u16buffer2[pos*2+0];
+			u16buffer[i*2+1] = d->u16buffer2[pos*2+1];
 		}
 		else{
-			u16buffer[i] = u16buffer2[pos*2];
+			u16buffer[i] = d->u16buffer2[pos*2];
 		}
 	}
 	#endif

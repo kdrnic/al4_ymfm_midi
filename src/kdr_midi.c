@@ -30,7 +30,7 @@
 #include "kdr_midi.h"
 
 int  _dummy_detect(struct KDR_MIDI_CTX *ctx, int input) { return TRUE; }
-int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices) { /*digi_none.desc = _midi_none.desc = get_config_text("The sound of silence");*/ return 0; }
+int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices, void *param) { /*digi_none.desc = _midi_none.desc = get_config_text("The sound of silence");*/ return 0; }
 void _dummy_exit(struct KDR_MIDI_CTX *ctx, int input) { }
 int  _dummy_set_mixer_volume(struct KDR_MIDI_CTX *ctx, int volume) { return 0; }
 int  _dummy_get_mixer_volume(struct KDR_MIDI_CTX *ctx) { return -1; }
@@ -1530,11 +1530,11 @@ void kdr_destroy_midi_ctx(KDR_MIDI_CTX *ctx)
 	free(ctx);
 }
 
-void kdr_install_driver(KDR_MIDI_CTX *ctx, const KDR_MIDI_DRIVER *drv)
+void kdr_install_driver(KDR_MIDI_CTX *ctx, const KDR_MIDI_DRIVER *drv, void *param)
 {
 	ctx->xmin = -1;
 	ctx->xmax = -1;
 	ctx->midi_driver = drv;
 	ctx->midi_card = drv->id;
-	ctx->midi_driver->init(ctx, 0, ctx->midi_driver->voices);
+	ctx->midi_driver->init(ctx, 0, ctx->midi_driver->voices, param);
 }

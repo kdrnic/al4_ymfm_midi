@@ -80,11 +80,11 @@ int main(int argc, char **argv)
 	else audio_buf = malloc(audio_buf_siz * sizeof(*audio_buf) * (stereo + 1));
 	
 	//Initialize YMFM
-	ymfm_init(SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
+	void *ymfm = ymfm_init(YMFM_SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
 	
 	//Initialize OPL driver
 	KDR_MIDI_CTX *ctx = kdr_create_midi_ctx();
-	kdr_install_driver(ctx, &kdr_midi_opl3);
+	kdr_install_driver(ctx, &kdr_midi_opl3, ymfm);
 	if(ibk_fn) kdr_load_ibk(ctx, ibk_fn, 0);
 	if(ibkd_fn) kdr_load_ibk(ctx, ibkd_fn, 1);
 	
@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 			int audio_buf_siz2 = audio_buf_siz;
 			while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
 			for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
-				ymfm_generate(audio_buf2, audio_buf_siz2);
+				ymfm_generate(ymfm, audio_buf2, audio_buf_siz2);
 				kdr_update_midi(ctx, audio_buf_siz2, sampling_rate);
 			}
 			

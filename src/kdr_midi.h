@@ -64,7 +64,7 @@ typedef struct KDR_MIDI_DRIVER             /* driver for playing midi music */
 	
 	/* setup routines */
 	KDR_AL_METHOD(int,  detect, (struct KDR_MIDI_CTX *ctx, int input));
-	KDR_AL_METHOD(int,  init, (struct KDR_MIDI_CTX *ctx, int input, int voices));
+	KDR_AL_METHOD(int,  init, (struct KDR_MIDI_CTX *ctx, int input, int voices, void *param));
 	KDR_AL_METHOD(void, exit, (struct KDR_MIDI_CTX *ctx, int input));
 	KDR_AL_METHOD(int,  set_mixer_volume, (struct KDR_MIDI_CTX *ctx, int volume));
 	KDR_AL_METHOD(int,  get_mixer_volume, (struct KDR_MIDI_CTX *ctx));
@@ -202,7 +202,7 @@ extern const KDR_MIDI_DRIVER kdr_midi_opl3, kdr_midi_opl2, kdr_midi_2xopl2;
 
 KDR_MIDI_CTX *kdr_create_midi_ctx(void);
 void kdr_destroy_midi_ctx(KDR_MIDI_CTX *ctx);
-void kdr_install_driver(KDR_MIDI_CTX *ctx, const KDR_MIDI_DRIVER *drv);
+void kdr_install_driver(KDR_MIDI_CTX *ctx, const KDR_MIDI_DRIVER *drv, void *param);
 int kdr_load_ibk(KDR_MIDI_CTX *ctx, const char *filename, int drums);
 
 KDR_AL_FUNC(KDR_MIDI *,   kdr_load_midi,        (KDR_MIDI_CTX *ctx, KDR_AL_CONST char *filename));
@@ -310,7 +310,7 @@ KDR_AL_FUNC(void,         kdr_update_midi,      (KDR_MIDI_CTX *ctx, int samples,
 	AL_FUNC(int, _midi_allocate_voice, (KDR_MIDI_CTX *ctx, int min, int max));
 	
 	int  _dummy_detect(struct KDR_MIDI_CTX *ctx, int input) ;
-	int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices) ;
+	int  _dummy_init(struct KDR_MIDI_CTX *ctx, int input, int voices, void *param) ;
 	void _dummy_exit(struct KDR_MIDI_CTX *ctx, int input) ;
 	int  _dummy_set_mixer_volume(struct KDR_MIDI_CTX *ctx, int volume) ;
 	int  _dummy_get_mixer_volume(struct KDR_MIDI_CTX *ctx) ;
