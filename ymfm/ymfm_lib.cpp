@@ -344,7 +344,20 @@ void *ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_)
 
 void ymfm_destroy(void *dv)
 {
-	//TODO
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	delete d->chip;
+	#if YMFMLIB_USE_LIBRESAMPLE
+	if(d->resampler) resample_close(d->resampler[0]);
+	if(d->stereo) resample_close(d->resampler[1]);
+	if(d->out_f_buffer) free(d->out_f_buffer);
+	#endif
+	if(d->reg_log) fclose(d->reg_log);
+	if(d->u16buffer2) free(d->u16buffer2);
+	for(int i = 0; i < 2; i++){
+		d->f_buffer[i].clear();
+		d->f_buffer[i].shrink_to_fit();
+	}
+	free(d);
 }
 
 void ymfm_openlog(void *dv, const char *fn)
@@ -441,4 +454,16 @@ void ymfm_generate(void *dv, void *buffer, int num_samples)
 		}
 	}
 	#endif
+}
+
+int ymfm_is_stereo(void *dv)
+{
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	return d->stereo;
+}
+
+int ymfm_get_sampling_rate(void *dv)
+{
+	ymfmlib_data *d = (ymfmlib_data *) dv;
+	return d->output_rate;
 }

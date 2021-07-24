@@ -10,6 +10,91 @@
 #include "wav.h"
 #include "crc32.h"
 
+static void init_allegro4(void)
+{
+	//Allegro 4 initialization
+	allegro_init();
+	set_color_depth(32);
+	set_gfx_mode(GFX_AUTODETECT_WINDOWED, 640, 400, 0, 0);
+	install_timer();
+	install_keyboard();
+	install_mouse();
+	install_sound(DIGI_AUTODETECT, MIDI_NONE, 0);
+	set_display_switch_mode(SWITCH_BACKGROUND);
+}
+
+static int ui_upd(KDR_MIDI_CTX *ctx, int nsecs, int nbeats)
+{
+	static int seekam = 1;
+	static int paused = 0;
+	static int redrawbar = 0;
+	static int oldsp = 0;
+	
+	int cbeats, csecs, bar;
+	int seekto, seek = 0;
+	int multi = 1;
+	cbeats = ctx->midi_pos;
+	csecs = ctx->midi_time;
+	
+	if(key_shifts & KB_SHIFT_FLAG) multi = 4;
+	
+	textprintf_ex(screen, font, 0, 0, makecol(255, 255, 255), makecol(0, 0, 0), "MIDI length is %04d beats %04d seconds now at %04d beats %04d seconds.", nbeats, nsecs, cbeats, csecs);
+	textprintf_ex(screen, font, 0, 8, makecol(255, 255, 255), makecol(0, 0, 0), "Press ESC to quit, Left-Right to seek, Shift increases seek speed, space pauses.");
+	if(paused) textprintf_ex(screen, font, 0, 16, makecol(255, 255, 255), makecol(0, 0, 0), "PAUSED.");
+	else textprintf_ex(screen, font, 0, 16, makecol(255, 255, 255), makecol(0, 0, 0), "PLAYING");
+	
+	bar = (SCREEN_W * csecs) / nsecs;
+	if(redrawbar){
+		rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
+		redrawbar = 0;
+	}
+	rectfill(screen, 0, 100, bar, 150, makecol(255, 32, 32));
+	
+	if(!paused){
+		if(key[KEY_LEFT]){
+			seek = 1;
+			seekto = cbeats - seekam * multi;
+			if(seekto < 0) seekto = 0;
+		}
+		if(key[KEY_RIGHT]){
+			seek = 1;
+			seekto = cbeats + seekam * multi;
+			if(seekto > nbeats) seekto = nbeats;
+		}
+		if(seek){
+			redrawbar = 1;
+			kdr_midi_seek(ctx, seekto);
+		}
+		if(key[KEY_SPACE] && !oldsp){
+			paused = 1;
+			kdr_midi_pause(ctx);
+		}
+	}
+	else{
+		if(key[KEY_SPACE] && !oldsp){
+			paused = 0;
+			kdr_midi_resume(ctx);
+		}
+	}
+	oldsp = key[KEY_SPACE];
+	
+	return key[KEY_ESC];
+}
+
+static void fill_audiobuf(void *ymfm, KDR_MIDI_CTX *ctx, uint16_t *audio_buf, int audio_buf_siz)
+{
+	int sampling_rate = ymfm_get_sampling_rate(ymfm);
+	int stereo = ymfm_is_stereo(ymfm);
+	
+	//Cut update into small updates to achieve good MIDI resolution
+	int audio_buf_siz2 = audio_buf_siz;
+	while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
+	for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
+		ymfm_generate(ymfm, audio_buf2, audio_buf_siz2);
+		kdr_update_midi(ctx, audio_buf_siz2, sampling_rate);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	//Some player state variables
@@ -17,16 +102,14 @@ int main(int argc, char **argv)
 	char midi_fn[256] = "";
 	KDR_MIDI *mid = 0;
 	int nbeats, nsecs;
-	int paused = 0;
-	int seekam = 1;
 	int firstseek = 0;
-	int redrawbar = 0;
-	int oldsp = 0;
 	int close = 0;
 	int maxsecs = INT_MAX;
 	int wavonly = 0;
 	char *ibk_fn = 0;
 	char *ibkd_fn = 0;
+	void *ymfm = 0;
+	KDR_MIDI_CTX *ctx = 0;
 	
 	//Handle command line arguments
 	for(i = 1; i < argc; i++){
@@ -53,15 +136,8 @@ int main(int argc, char **argv)
 		}
 	}
 	
-	//Allegro 4 initialization
-	allegro_init();
-	set_color_depth(32);
-	set_gfx_mode(GFX_AUTODETECT_WINDOWED, 640, 400, 0, 0);
-	install_timer();
-	install_keyboard();
-	install_mouse();
-	install_sound(DIGI_AUTODETECT, MIDI_AUTODETECT, 0);
-	set_display_switch_mode(SWITCH_BACKGROUND);
+	//Initialize allegro
+	init_allegro4();
 	
 	//Initialize audio stream
 	int stereo = 1;
@@ -80,10 +156,10 @@ int main(int argc, char **argv)
 	else audio_buf = malloc(audio_buf_siz * sizeof(*audio_buf) * (stereo + 1));
 	
 	//Initialize YMFM
-	void *ymfm = ymfm_init(YMFM_SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
+	ymfm = ymfm_init(YMFM_SB16_OPL_CLOCK_RATE, sampling_rate, stereo);
 	
 	//Initialize OPL driver
-	KDR_MIDI_CTX *ctx = kdr_create_midi_ctx();
+	ctx = kdr_create_midi_ctx();
 	kdr_install_driver(ctx, &kdr_midi_opl3, ymfm);
 	if(ibk_fn) kdr_load_ibk(ctx, ibk_fn, 0);
 	if(ibkd_fn) kdr_load_ibk(ctx, ibkd_fn, 1);
@@ -106,6 +182,7 @@ int main(int argc, char **argv)
 		}
 	}
 	
+	//Calculate and print a CRC32 of the MIDI
 	crc32_state_t crc;
 	crc32_init(crc);
 	crc32_buffer((char *) &mid->divisions, sizeof(mid->divisions), crc);
@@ -115,8 +192,6 @@ int main(int argc, char **argv)
 		}
 	}
 	printf("%x %x\n", crc[0], crc[1]);
-	
-	clear(screen);
 	
 	//Calculate MIDI duration
 	kdr_get_midi_length(ctx, mid);
@@ -134,72 +209,21 @@ int main(int argc, char **argv)
 		kdr_midi_seek(ctx, firstseek);
 	}
 	
+	//Prepare screen
+	clear(screen);
 	rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
 	
 	//Main loop
 	while(!key[KEY_ESC] && !(close && (ctx->midi_time >= nsecs || ctx->midi_time >= maxsecs))){
-		//START OF PLAYER UI CODE -----------------------------------------
-		#if 1
-		int cbeats, csecs, bar;
-		int seekto, seek = 0;
-		int multi = 1;
-		cbeats = ctx->midi_pos;
-		csecs = ctx->midi_time;
-		
-		if(key_shifts & KB_SHIFT_FLAG) multi = 4;
-		
-		textprintf_ex(screen, font, 0, 0, makecol(255, 255, 255), makecol(0, 0, 0), "MIDI length is %04d beats %04d seconds now at %04d beats %04d seconds.", nbeats, nsecs, cbeats, csecs);
-		textprintf_ex(screen, font, 0, 8, makecol(255, 255, 255), makecol(0, 0, 0), "Press ESC to quit, Left-Right to seek, Shift increases seek speed, space pauses.");
-		if(paused) textprintf_ex(screen, font, 0, 16, makecol(255, 255, 255), makecol(0, 0, 0), "PAUSED.");
-		else textprintf_ex(screen, font, 0, 16, makecol(255, 255, 255), makecol(0, 0, 0), "PLAYING");
-		
-		bar = (SCREEN_W * csecs) / nsecs;
-		if(redrawbar){
-			rectfill(screen, 0, 100, SCREEN_W, 150, makecol(0, 0, 255));
-			redrawbar = 0;
+		//Update UI such as text, progress bar
+		if(ui_upd(ctx, nsecs, nbeats)){
+			break;
 		}
-		rectfill(screen, 0, 100, bar, 150, makecol(255, 32, 32));
-		
-		if(!paused){
-			if(key[KEY_LEFT]){
-				seek = 1;
-				seekto = cbeats - seekam * multi;
-				if(seekto < 0) seekto = 0;
-			}
-			if(key[KEY_RIGHT]){
-				seek = 1;
-				seekto = cbeats + seekam * multi;
-				if(seekto > nbeats) seekto = nbeats;
-			}
-			if(seek){
-				redrawbar = 1;
-				kdr_midi_seek(ctx, seekto);
-			}
-			if(key[KEY_SPACE] && !oldsp){
-				paused = 1;
-				kdr_midi_pause(ctx);
-			}
-		}
-		else{
-			if(key[KEY_SPACE] && !oldsp){
-				paused = 0;
-				kdr_midi_resume(ctx);
-			}
-		}
-		oldsp = key[KEY_SPACE];
-		#endif
-		//END OF PLAYER UI CODE -------------------------------------------
 		
 		//Use get_audio_stream_buffer to try and get a new buffer to fill with
 		//n=audio_buf_siz samples
 		if(wavonly || (audio_buf = (uint16_t *) get_audio_stream_buffer(audio_stream))){
-			//Cut update into small updates to achieve good MIDI resolution
-			int audio_buf_siz2 = audio_buf_siz;
-			while((audio_buf_siz2 % 1 == 0) && (audio_buf_siz2 > sampling_rate / 100)) audio_buf_siz2 /= 2;
-			for(uint16_t *audio_buf2 = audio_buf; audio_buf2 < audio_buf + audio_buf_siz * (stereo + 1); audio_buf2 += audio_buf_siz2 * (stereo + 1)){
-				ymfm_generate(ymfm, audio_buf2, audio_buf_siz2);
-				kdr_update_midi(ctx, audio_buf_siz2, sampling_rate);
-			}
+			fill_audiobuf(ymfm, ctx, audio_buf, audio_buf_siz);
 			
 			//Also add to WAV file capture:
 			int add_siz = audio_buf_siz * (1 + stereo);
@@ -219,21 +243,34 @@ int main(int argc, char **argv)
 	
 	//Save WAV file
 	if(wavonly){
+		//Pick a filename
 		char wav_fn[256];
 		strcpy(wav_fn, get_filename(midi_fn));
 		*(get_extension(wav_fn) - 1) = 0;
 		strcat(wav_fn, YMFMLIB_USE_LIBRESAMPLE ? "_libresample" : "");
 		strcat(wav_fn, ".wav");
-		SAMPLE *wav_smpl = create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
+		
+		//Actually save through a KDR_SAMPLE structure
+		KDR_SAMPLE *wav_smpl = kdr_create_sample(16, stereo, sampling_rate, wavlen / (1 + stereo));
 		memcpy(wav_smpl->data, wavbuf, wavlen * sizeof(*wavbuf));
-		save_wav(wav_fn, wav_smpl);
-		destroy_sample(wav_smpl);
+		kdr_save_wav(wav_fn, wav_smpl);
+		kdr_destroy_sample(wav_smpl);
 		free(wavbuf);
 	}
 	
 	end:
+	//Shut down allegro
 	allegro_exit();
-	printf("Bye, MWF. Come back soon.\n");
+	
+	//Destroy MIDI
+	if(mid) kdr_destroy_midi(ctx, mid);
+	
+	//Shut down YMFM
+	if(ymfm) ymfm_destroy(ymfm);
+	
+	//Shut down MIDI ctx
+	if(ctx) kdr_destroy_midi_ctx(ctx);
+	
 	return 0;
 }
 END_OF_MAIN()

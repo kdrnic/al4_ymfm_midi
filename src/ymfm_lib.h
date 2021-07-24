@@ -8,6 +8,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+int ymfm_is_stereo(void *dv);
+int ymfm_get_sampling_rate(void *dv);
 void *ymfm_init(unsigned int clock, unsigned int output_rate_, int stereo_);
 void ymfm_openlog(void *dv, const char *fn);
 void ymfm_write(void *dv, int reg, unsigned char data);
