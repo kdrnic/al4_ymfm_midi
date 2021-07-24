@@ -6,6 +6,8 @@ The Allegro 4 MIDI playing code was heavily  modified to be completely independe
 
 Much of the YMFM "frontend" code was taken from [vgmrender.cpp](https://github.com/aaronsgiles/ymfm/blob/ef21f08a16f44b005c9ace5f8f44ae6f95dbf3f0/examples/vgmrender/vgmrender.cpp).
 
+It supports IBK patch files created by [OPL3BankEditor](https://github.com/Wohlstand/OPL3BankEditor) through the kdr_load_ibk function.
+
 ## Usage ##
 
 A example of use is provided in main.c.
